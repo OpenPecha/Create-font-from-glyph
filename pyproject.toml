@@ -3,18 +3,19 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "project_name"
+name = "create-font-from-glyph"
 version = "0.0.1"
 authors = [
   { name="OpenPecha", email="dev@openpecha.org" },
 ]
-description = "A small example package"
+description = "Create custom fonts from individual glyphs using this Python package. This tool provides a simple and efficient way to assemble fonts by combining individual characters or glyphs into a single font file. 
+
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
+    "Operating System :: OS Independent", 
 ]
 
 [project.optional-dependencies]
