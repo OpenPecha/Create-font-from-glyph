@@ -16,11 +16,16 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent", 
 ]
-
 [project.optional-dependencies.dev]
-pytest = "pytest"
-pytest-cov = "pytest-cov"
-pre-commit = "pre-commit"
+[[project.optional-dependencies.dev]]
+name = "pytest"
+
+[[project.optional-dependencies.dev]]
+name = "pytest-cov"
+
+[[project.optional-dependencies.dev]]
+name = "pre-commit"
+
 
 [project.urls]
 Homepage = "https://github.com/OpenPecha/openpecha-project-template"
