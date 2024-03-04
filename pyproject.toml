@@ -8,9 +8,8 @@ version = "0.0.1"
 authors = [
   { name="OpenPecha", email="dev@openpecha.org" },
 ]
-description = description = """
-Create custom fonts from individual glyphs using this Python package. This tool provides a simple and efficient way to assemble fonts by combining individual characters or glyphs into a single font file.
-"""
+description = "Create custom fonts from individual glyphs using this Python package. This tool provides a simple and efficient way to assemble fonts by combining individual characters or glyphs into a single font file."
+
 
 
 readme = "README.md"
