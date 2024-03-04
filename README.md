@@ -10,7 +10,7 @@
 
 ## Description
 
-Create custom fonts from individual glyphs using this Python package. This tool provides a simple and efficient way to assemble fonts by combining individual characters or glyphs into a single font file.
+Create custom fonts from individual glyphs using this Python tool. This tool provides a simple and efficient way to assemble fonts by combining individual characters or glyphs into a single font file.
 
 ## Project owner(s)
 
