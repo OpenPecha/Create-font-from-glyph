@@ -17,14 +17,6 @@ classifiers = [
     "Operating System :: OS Independent", 
 ]
 
-[project.dependencies]
-Pillow = "Pillow"  # PIL library
-svgwrite = "svgwrite"  # for creating SVG files
-fonttools = "fonttools"  # for working with font files
-numpy = "numpy"  # Numerical computing library
-jsonlines = "jsonlines"  # for reading and writing JSON lines files
-boto3 = "boto3"  # aws sdk for Python
-
 [project.optional-dependencies.dev]
 pytest = "pytest"
 pytest-cov = "pytest-cov"
