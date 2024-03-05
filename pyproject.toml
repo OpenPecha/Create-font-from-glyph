@@ -18,7 +18,9 @@ classifiers = [
 ]
 
 [project.optional-dependencies.dev]
-names = ["pytest", "pytest-cov", "pre-commit"]
+pytest = "*"
+pytest-cov = "*"
+pre-commit = "*"
 
 [project.urls]
 Homepage = "https://github.com/OpenPecha/openpecha-project-template"
