@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "create-font-from-glyph"
 version = "0.0.1"
 authors = [
-  { name = "OpenPecha", email = "dev@openpecha.org" },
+  { name = "OpenPecha", email = "dev@openpecha.org" }
 ]
 description = "Create custom fonts from individual glyphs using this Python package. This tool provides a simple and efficient way to assemble fonts by combining individual characters or glyphs into a single font file."
 readme = "README.md"
@@ -14,17 +14,11 @@ requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Python :: 3",
     "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent", 
+    "Operating System :: OS Independent"
 ]
 
 [project.optional-dependencies.dev]
-name = "pytest"
-
-[project.optional-dependencies.dev]
-name = "pytest-cov"
-
-[project.optional-dependencies.dev]
-name = "pre-commit"
+names = ["pytest", "pytest-cov", "pre-commit"]
 
 [project.urls]
 Homepage = "https://github.com/OpenPecha/openpecha-project-template"
