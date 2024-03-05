@@ -202,12 +202,19 @@ def create_into_desired_format(cleaned_image_path):
 
 def main():
     jsonl_paths = list(Path("derge/glyph_ann_reviewed_batch6_ga").iterdir())
+    processed_ids = set()  
     for jsonl_path in jsonl_paths:
         try:
             with jsonlines.open(jsonl_path) as reader:
                 for line in reader:
                     if line["answer"] == "accept":
                         try:
+                            image_id = line["id"].split("_")[0] 
+                            if image_id in processed_ids:
+                                logging.info(f"Skipping duplicate ID: {image_id}")
+                                continue
+                            processed_ids.add(image_id)
+
                             image_span = line["spans"]
                             image_path = get_image_path(line["image"])
                             cleaned_image_path = convert_outside_polygon_to_white(
