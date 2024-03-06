@@ -30,18 +30,12 @@ def get_image_path(image_url):
     obj_key = "/".join(image_parts[4:])
     decoded_key = urllib.parse.unquote(obj_key)
     image_name = decoded_key.split("/")[-1]
-
-    # Extracting file name and extension
     file_name, file_extension = os.path.splitext(image_name)
-
-    # Removing underscore and number after the file name
     image_name_without_suffix = re.sub(r'(_\d+)$', '', file_name)
-
-    # Keeping only Tibetan Unicode characters
     image_name_tibetan_only = re.sub(r'[^\u0F00-\u0FFF]', '', image_name_without_suffix)
 
     try:
-        response = s3.get_object(Bucket=bucket_name, Key=decoded_key)  # download the image from the bucket
+        response = s3.get_object(Bucket=bucket_name, Key=decoded_key)  
         image_data = response['Body'].read()
         with open(fr"data/downloaded_glyph/{image_name_tibetan_only}{file_extension}", 'wb') as f:
             f.write(image_data)
@@ -63,7 +57,7 @@ def get_image_output_path(image, image_name, output_path, headlines):
     left_edge, right_edge = get_edges(image)
     if left_edge is None:
         return None
-    # <Unicode>-<PNG width - margins>-<baseline start - left glyph edge>-<right glyph edge - baseline end>.png
+    # <Unicode>-<PNG width - margins>_<baseline start - left glyph edge>_<right glyph edge - baseline end>.png
     new_image_name = f"{glyph_name}_{int(image_width - (left_edge + right_edge))}_{int(headline_starts - left_edge)}_{int(headline_ends - right_edge)}.png"
     print(new_image_name)
     image_output_path = f"{output_path}/{new_image_name}"
@@ -72,16 +66,16 @@ def get_image_output_path(image, image_name, output_path, headlines):
 
 # for left and right edges
 def get_edges(image):
-    if isinstance(image, np.ndarray):  # Check if the input is a numpy array
+    if isinstance(image, np.ndarray):  
         gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    elif isinstance(image, Image.Image):  # Assuming Image is imported from PIL
+    elif isinstance(image, Image.Image): 
         if image.mode != 'L':
             image = image.convert('L')
         gray_image = np.array(image)
     else:
         raise ValueError("Unsupported image type")
 
-    edges = cv2.Canny(gray_image, 50, 150)  # Adjust the thresholds as needed
+    edges = cv2.Canny(gray_image, 50, 150) 
     contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     left_edge = min(contours[0][:, 0, 0]) if contours else None
     right_edge = max(contours[0][:, 0, 0]) if contours else None
@@ -131,51 +125,35 @@ def convert_outside_polygon_to_white(image_path, span, output_path):
 
 def find_glyph_bbox(image):
     gray_image = image.convert('L')
-    pixels = gray_image.load()
-    width, height = image.size
-    left, upper, right, lower = width, height, 0, 0
-    for y in range(height):
-        for x in range(width):
-            if pixels[x, y] != 255:
-                left = min(left, x)
-                upper = min(upper, y)
-                right = max(right, x)
-                lower = max(lower, y)
-    return left, upper, right + 1, lower + 1
+    binary_image = gray_image.point(lambda p: p < 128 and 255)
+    bbox = binary_image.getbbox()
+    return bbox
 
+# convert png to svg
+def create_svg_with_glyph(png_path, output_svg_path):
+    with Image.open(png_path) as img:
+        bbox = find_glyph_bbox(img)
+        
+        if bbox is None:
+            raise ValueError("No glyph found in the image.")
 
-def create_svg_with_glyph(width, height, left, upper, right, lower, png_base64, output_svg):
-    try:
-        dwg = svgwrite.Drawing(output_svg, profile='tiny', size=(f'{width}px', f'{height}px'))
-        image = svgwrite.image.Image(href=f'data:image/png;base64,{png_base64}',
-                                     insert=(left, upper),
-                                     size=(right - left, lower - upper))
+        left, upper, right, lower = bbox
+        with open(png_path, "rb") as f:
+            png_base64 = base64.b64encode(f.read()).decode('utf-8')
+
+        dwg = svgwrite.Drawing(output_svg_path, profile='tiny', size=(f'{right - left}px', f'{lower - upper}px'))
+        image = svgwrite.image.Image(href=f'data:image/png;base64,{png_base64}')
+        image['x'] = f'0px'
+        image['y'] = f'0px'
+        image['width'] = f'{right - left}px'
+        image['height'] = f'{lower - upper}px'
         dwg.add(image)
         dwg.save()
-    except Exception as e:
-        print(f"Error creating SVG with glyph: {e}")
 
 
+# assing unicode / yet to write
+# create font into desired format / yet to write
 
-def png_to_svg(input_png, output_svg):
-    try:
-        image = Image.open(input_png).convert('1')
-        pbm_path = "temp.pbm"
-        image.save(pbm_path)
-        subprocess.run(["potrace", pbm_path, "-s", "--scale", "5.5", "-o", output_svg],encoding='utf-8')
-        os.remove(pbm_path)
-
-        with Image.open(input_png) as img:
-            width, height = img.size
-            left, upper, right, lower = find_glyph_bbox(img)
-            png_base64 = base64.b64encode(img.tobytes()).decode('utf-8')
-        
-        create_svg_with_glyph(width, height, left, upper, right, lower, png_base64, output_svg)
-    except Exception as e:
-        print(f"Error converting PNG to SVG: {e}")
-
-
-# create font into desired format
 
 
 def main():
@@ -202,7 +180,7 @@ def main():
                                 continue
                             filename = (cleaned_image_path.split("/")[-1]).split(".")[0]
                             output_path = Path(f"data/svg/{filename}.svg")
-                            png_to_svg(cleaned_image_path, output_path)
+                            create_svg_with_glyph(cleaned_image_path, output_path)
 
                         except Exception as e:
                             logging.error(f"Error processing image {line['image']}: {e}")
