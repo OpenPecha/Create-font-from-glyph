@@ -42,7 +42,6 @@ try:
     monlam_ai_ocr_s3_client = monlam_ai_ocr_session .client('s3')
     monlam_ai_ocr_s3_resource = monlam_ai_ocr_session.resource('s3')
     monlam_ai_ocr_bucket = monlam_ai_ocr_s3_resource.Bucket(MONLAM_AI_OCR_BUCKET)
-    print('Boto3 session and S3 resource created')
 except Exception as e:
     print("error occurred while creating S3 resource objects:", e)
     exit(1)
