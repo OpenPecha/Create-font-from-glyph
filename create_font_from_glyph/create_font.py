@@ -14,7 +14,6 @@ import jsonlines
 import logging
 import traceback
 import re
-import cv2
 
 s3 = monlam_ai_ocr_s3_client
 bucket_name = MONLAM_AI_OCR_BUCKET
@@ -58,7 +57,7 @@ def get_image_output_path(cleaned_image, image_name, output_path, headlines):
     image_output_path = f"{output_path}/{new_image_name}"
     # .for debug
     print(new_image_name)
-    print(image_width)
+    # print(image_width)
     return image_output_path
 
 
@@ -75,7 +74,7 @@ def get_edges(cleaned_image):
 
     left_edge = np.min(black_pixels[1]) + 1
     right_edge = np.max(black_pixels[1]) + 1
-    print(f"Left edge: {left_edge}, Right edge: {right_edge}")
+    # print(f"Left edge: {left_edge}, Right edge: {right_edge}")
     return left_edge, right_edge
 
 
@@ -91,8 +90,6 @@ def get_headlines(baselines_coord):
     }
     print(headlines)
     return headlines
-
-from PIL import Image, ImageDraw
 
 # --function to process the image-- 
 # 1.convert outside of poly to white
