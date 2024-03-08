@@ -5,7 +5,6 @@ import boto3
 MONLAM_AI_OCR_BUCKET = "monlam.ai.ocr"
 
 aws_credentials_file = os.path.expanduser("aws/credential/tenkal_accessKeys.csv")
-
 aws_access_key_id = None
 aws_secret_access_key = None
 
@@ -26,18 +25,14 @@ except FileNotFoundError:
 except Exception as e:
     print("error occurred while reading the CSV file:", e)
     exit(1)
-
-
 try:
     monlam_ai_ocr_session = boto3.Session(
         aws_access_key_id=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key
     )
-
 except Exception as e:
     print("error occurred while creating Boto3 session:", e)
     exit(1)
-
 try:
     monlam_ai_ocr_s3_client = monlam_ai_ocr_session .client('s3')
     monlam_ai_ocr_s3_resource = monlam_ai_ocr_session.resource('s3')

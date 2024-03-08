@@ -44,13 +44,13 @@ def get_image_path(image_url):
     return fr"data/derge_img/downloaded_glyph/{image_name_tibetan_only}{file_extension}"
 
 # new image name
-def get_image_output_path(result_image, image_name, output_path, headlines):
-    image_width = result_image.width
+def get_image_output_path(cleaned_image, image_name, output_path, headlines):
+    image_width = cleaned_image.width
     headline_starts = headlines["headline_starts"]
     headline_ends = headlines["headline_ends"]
     glyph_name = image_name.split(".")[0].split("_")[0]
 
-    left_edge, right_edge = get_edges(result_image)
+    left_edge, right_edge = get_edges(cleaned_image)
     if left_edge is None:
         return None
 
@@ -65,10 +65,10 @@ def get_image_output_path(result_image, image_name, output_path, headlines):
 
 # for left and right edges
 
-def get_edges(result_image):
-    if result_image.mode != '1':
-        result_image =result_image.convert('1')
-    image_array = np.array(result_image)
+def get_edges(cleaned_image):
+    if cleaned_image.mode != '1':
+        cleaned_image =cleaned_image.convert('1')
+    image_array = np.array(cleaned_image)
     image_array = image_array[:, 1:-1]
     black_pixels = np.where(image_array == 0) 
     if black_pixels[0].size == 0 or black_pixels[1].size == 0:
@@ -93,8 +93,9 @@ def get_headlines(baselines_coord):
     print(headlines)
     return headlines
 
+from PIL import Image, ImageDraw
 
-def convert_outside_polygon_to_white(image_path, span, output_path):
+def convert_outside_polygon_to_white(png_image_path, span, cleaned_output_path):
     baselines_coord = None
     polygon_points = None
     for info in span:
@@ -104,22 +105,32 @@ def convert_outside_polygon_to_white(image_path, span, output_path):
             polygon_points = [(x, y) for x, y in info["points"]]
     if baselines_coord is None or polygon_points is None:
         return None
-
-    image = Image.open(image_path)
+    
+    image = Image.open(png_image_path)
     mask = Image.new("L", image.size, 0)
     draw = ImageDraw.Draw(mask)
     draw.polygon(polygon_points, fill=255)
-    result_image = Image.new("RGB", image.size, (255, 255, 255))
-    result_image.paste(image, mask=mask)
+    cleaned_image = Image.new("RGB", image.size, (255, 255, 255))
+    cleaned_image.paste(image, mask=mask)
 
     headlines = get_headlines(baselines_coord)
-    image_output_path = get_image_output_path(result_image, image_path.split('/')[-1], output_path, headlines)
+    cleaned_output_path = get_image_output_path(cleaned_image, png_image_path.split('/')[-1], cleaned_output_path, headlines)
 
-    if image_output_path is not None:
-        result_image.save(image_output_path)
-        return image_output_path
+    if cleaned_output_path is not None:
+        cleaned_image = cleaned_image.convert("RGBA")  # convert white regions to transparent
+        data = cleaned_image.getdata()
+        newData = []
+        for item in data:
+            if item[0] == 255 and item[1] == 255 and item[2] == 255:
+                newData.append((255, 255, 255, 0))
+            else:
+                newData.append(item)
+        cleaned_image.putdata(newData)
+        cleaned_image.save(cleaned_output_path)
+        return cleaned_output_path
     else:
         return None
+
 
 
 def find_glyph_bbox(image):
@@ -131,7 +142,7 @@ def find_glyph_bbox(image):
 # convert png to svg
 
 
-def create_svg_with_glyph(png_path, output_svg_path, scale_factor=3):
+def create_svg_with_glyph(png_path, output_svg_path, scale_factor=10):
     with Image.open(png_path) as img:
         bbox = find_glyph_bbox(img)
 
@@ -175,11 +186,11 @@ def main():
                             processed_ids.add(image_id)
 
                             image_span = line["spans"]
-                            image_path = get_image_path(line["image"])
+                            png_image_path = get_image_path(line["image"])
                             cleaned_image_path = convert_outside_polygon_to_white(
-                                image_path, image_span, Path(f"data/derge_img/cleaned_images"))
+                                png_image_path, image_span, Path(f"data/derge_img/cleaned_images"))
                             if cleaned_image_path is None:
-                                logging.info(f"Skipping {image_path}")
+                                logging.info(f"Skipping {png_image_path}")
                                 continue
                             filename = (cleaned_image_path.split("/")[-1]).split(".")[0]
                             output_path = Path(f"data/derge_img/svg/{filename}.svg")
