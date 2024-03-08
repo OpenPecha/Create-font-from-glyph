@@ -1,7 +1,6 @@
 from pathlib import Path
 from config import MONLAM_AI_OCR_BUCKET, monlam_ai_ocr_s3_client
 from PIL import Image, ImageDraw
-import subprocess
 import urllib.parse
 import os
 import svgwrite
@@ -95,7 +94,12 @@ def get_headlines(baselines_coord):
 
 from PIL import Image, ImageDraw
 
-def convert_outside_polygon_to_white(png_image_path, span, cleaned_output_path):
+# --function to process the image-- 
+# 1.convert outside of poly to white
+# 2.turn the background transparent
+# 3.apply anti aliasing/ yet
+
+def png_process(png_image_path, span, cleaned_output_path):
     baselines_coord = None
     polygon_points = None
     for info in span:
@@ -187,7 +191,7 @@ def main():
 
                             image_span = line["spans"]
                             png_image_path = get_image_path(line["image"])
-                            cleaned_image_path = convert_outside_polygon_to_white(
+                            cleaned_image_path = png_process(
                                 png_image_path, image_span, Path(f"data/derge_img/cleaned_images"))
                             if cleaned_image_path is None:
                                 logging.info(f"Skipping {png_image_path}")
