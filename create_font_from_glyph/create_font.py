@@ -44,13 +44,13 @@ def get_image_path(image_url):
     return fr"data/derge_img/downloaded_glyph/{image_name_tibetan_only}{file_extension}"
 
 # new image name
-def get_image_output_path(image, image_name, output_path, headlines):
-    image_width = image.width
+def get_image_output_path(result_image, image_name, output_path, headlines):
+    image_width = result_image.width
     headline_starts = headlines["headline_starts"]
     headline_ends = headlines["headline_ends"]
     glyph_name = image_name.split(".")[0].split("_")[0]
 
-    left_edge, right_edge = get_edges(image)
+    left_edge, right_edge = get_edges(result_image)
     if left_edge is None:
         return None
 
@@ -65,10 +65,10 @@ def get_image_output_path(image, image_name, output_path, headlines):
 
 # for left and right edges
 
-def get_edges(image):
-    if image.mode != '1':
-        image = image.convert('1')
-    image_array = np.array(image)
+def get_edges(result_image):
+    if result_image.mode != '1':
+        result_image =result_image.convert('1')
+    image_array = np.array(result_image)
     image_array = image_array[:, 1:-1]
     black_pixels = np.where(image_array == 0) 
     if black_pixels[0].size == 0 or black_pixels[1].size == 0:
@@ -81,6 +81,8 @@ def get_edges(image):
 
 
 # for headlines
+
+
 def get_headlines(baselines_coord):
     min_x = min(coord[0] for coord in baselines_coord)
     max_x = max(coord[0] for coord in baselines_coord)
@@ -111,7 +113,7 @@ def convert_outside_polygon_to_white(image_path, span, output_path):
     result_image.paste(image, mask=mask)
 
     headlines = get_headlines(baselines_coord)
-    image_output_path = get_image_output_path(image, image_path.split('/')[-1], output_path, headlines)
+    image_output_path = get_image_output_path(result_image, image_path.split('/')[-1], output_path, headlines)
 
     if image_output_path is not None:
         result_image.save(image_output_path)
