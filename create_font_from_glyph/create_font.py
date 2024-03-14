@@ -3,17 +3,17 @@ from config import MONLAM_AI_OCR_BUCKET, monlam_ai_ocr_s3_client
 from PIL import Image, ImageDraw
 import urllib.parse
 import os
-from PIL import Image
-# from fontTools.ttLib import TTFont
-# from fontTools.pens.ttGlyphPen import TTGlyphPen
-# from fontTools.fontBuilder import FontBuilder
-# from fontTools.pens.svgPathPen import SVGPathPen
 import numpy as np
 import jsonlines
 import logging
 import traceback
 import re
 import subprocess
+from fontTools.ttLib import TTFont
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.svgLib import SVGPath
+from defcon import Font
+
 
 
 s3 = monlam_ai_ocr_s3_client
@@ -92,6 +92,7 @@ def get_headlines(baselines_coord):
 
 # convert outside to white
 
+
 def png_process(png_image_path, span, cleaned_image_path):
     baselines_coord = None
     polygon_points = None
@@ -144,18 +145,75 @@ def png_to_svg(cleaned_image_path, svg_output_path):
     image = Image.open(cleaned_image_path).convert('1')
     pbm_path = "temp.pbm"
     image.save(pbm_path)
-    
-    # sanitize the filename as potrace cant handle tibetan unicode
+
+    # sanitize the filename as potrace can't handle Tibetan unicode
     sanitized_filename = re.sub('[^A-Za-z0-9_.]+', '', Path(cleaned_image_path).stem)
-    
+
     # create a temp svg_output_path with the sanitized filename
     temp_svg_output_path = Path(f"data/derge_img/svg/{sanitized_filename}.svg")
 
     subprocess.run(["potrace", pbm_path, "-s", "--scale", "5.5", "-o", temp_svg_output_path])
     os.remove(pbm_path)
-    
-    # rename the temp svg file to the original name
+
+    # Check if the destination file already exists, if yes, remove it before renaming
+    if os.path.exists(svg_output_path):
+        os.remove(svg_output_path)
+
+    # Rename the temp svg file to the original name
     os.rename(temp_svg_output_path, svg_output_path)
+
+
+
+
+def convert_svg_to_ttf(svg_output_path):
+    svg_name = Path(svg_output_path).stem
+    input_dir = os.path.dirname(svg_output_path)
+    output_ufo = f"data/derge_img/ufo/{svg_name}.ufo"
+    output_ttf = f"data/derge_img/ttf/{svg_name}.ttf"
+    font_file = "data/derge_img/font/NotoSerifTibetan-VariableFont_wght.ttf"
+    font_name = "derge font"
+    font_size = 12
+
+    font = Font()
+
+    set_font_metadata(font_file, font_name)
+
+    for filename in os.listdir(input_dir):
+        if filename.endswith(".svg"):
+            unicode, width, lsb, rsb = filename[:-4].split("_")
+            unicode_name = ord(unicode)
+            width = int(width)
+            lsb = int(lsb)
+            rsb = int(rsb)
+            with open(os.path.join(input_dir, filename), 'r') as f:
+                svg = f.read()
+            path = SVGPath(svg)
+            glyph_pen = TTGlyphPen(None)
+            path.draw(glyph_pen)
+            glyph = glyph_pen.glyph()
+            glyph.width = width
+            glyph.leftMargin = lsb
+            glyph.rightMargin = rsb
+            glyph.font = font_name
+            glyph.font_size = font_size
+
+            font.newGlyph(unicode_name)
+            font[unicode_name] = glyph
+    
+    font.save(output_ufo)
+    ttf_font = TTFont(output_ufo)
+    ttf_font.save(output_ttf)
+
+def set_font_metadata(font_file, font_name):
+    ttf_font = TTFont(font_file)
+    for record in ttf_font["name"].names:
+        if record.nameID == 1:  
+            record.string = font_name.encode("utf-16be")
+        elif record.nameID == 2: 
+            record.string = font_name.encode("utf-16be")
+    ttf_font.save(font_file)
+
+
 
 
 def main():
@@ -175,16 +233,18 @@ def main():
 
                             image_span = line["spans"]
                             png_image_path = get_image_path(line["image"])
-                     
+
                             cleaned_image_path = png_process(
-                            png_image_path, image_span, Path(f"data/derge_img/cleaned_images"))
-                        
+                                png_image_path, image_span, Path(f"data/derge_img/cleaned_images"))
+
                             if cleaned_image_path is None:
                                 logging.info(f"Skipping {png_image_path}")
                                 continue
-                            filename = Path(cleaned_image_path).stem 
+                            filename = Path(cleaned_image_path).stem
                             svg_output_path = Path(f"data/derge_img/svg/{filename}.svg")
                             png_to_svg(cleaned_image_path, svg_output_path)
+
+                            convert_svg_to_ttf(svg_output_path)
 
                         except Exception as e:
                             logging.error(f"Error processing image {line['image']}: {e}")
