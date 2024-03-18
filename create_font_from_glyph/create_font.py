@@ -9,10 +9,12 @@ import logging
 import traceback
 import re
 import subprocess
+from io import BytesIO
+from xml.etree import ElementTree as ET
+from fontTools.ttLib.tables._g_l_y_f import GlyphCoordinates
 from fontTools.ttLib import TTFont
-from fontTools.pens.ttGlyphPen import TTGlyphPen
-from fontTools.svgLib import SVGPath
-from defcon import Font
+from fontTools.pens.recordingPen import RecordingPen
+
 
 
 
@@ -145,74 +147,108 @@ def png_to_svg(cleaned_image_path, svg_output_path):
     image = Image.open(cleaned_image_path).convert('1')
     pbm_path = "temp.pbm"
     image.save(pbm_path)
-
-    # sanitize the filename as potrace can't handle Tibetan unicode
     sanitized_filename = re.sub('[^A-Za-z0-9_.]+', '', Path(cleaned_image_path).stem)
 
-    # create a temp svg_output_path with the sanitized filename
+    # create a temp svg_output_path for sanitized name
     temp_svg_output_path = Path(f"data/derge_img/svg/{sanitized_filename}.svg")
 
     subprocess.run(["potrace", pbm_path, "-s", "--scale", "5.5", "-o", temp_svg_output_path])
     os.remove(pbm_path)
 
-    # Check if the destination file already exists, if yes, remove it before renaming
     if os.path.exists(svg_output_path):
         os.remove(svg_output_path)
 
-    # Rename the temp svg file to the original name
+    # rename the temp svg file to the original name
     os.rename(temp_svg_output_path, svg_output_path)
 
 
 
 
-def convert_svg_to_ttf(svg_output_path):
-    svg_name = Path(svg_output_path).stem
-    input_dir = os.path.dirname(svg_output_path)
-    output_ufo = f"data/derge_img/ufo/{svg_name}.ufo"
-    output_ttf = f"data/derge_img/ttf/{svg_name}.ttf"
-    font_file = "data/derge_img/font/NotoSerifTibetan-VariableFont_wght.ttf"
-    font_name = "derge font"
-    font_size = 12
+logging.basicConfig(level=logging.INFO)
 
-    font = Font()
+def svg_to_glyph(svg_path):
+    with open(svg_path, "rb") as svg_file:
+        svg_data = svg_file.read()
 
-    set_font_metadata(font_file, font_name)
+    try:
+        svg_root = ET.parse(BytesIO(svg_data)).getroot()
+    except ET.ParseError as e:
+        logging.error(f"Failed to parse SVG file: {svg_path}, error: {e}")
+        return None, None
 
-    for filename in os.listdir(input_dir):
-        if filename.endswith(".svg"):
-            unicode, width, lsb, rsb = filename[:-4].split("_")
-            unicode_name = ord(unicode)
-            width = int(width)
-            lsb = int(lsb)
-            rsb = int(rsb)
-            with open(os.path.join(input_dir, filename), 'r') as f:
-                svg = f.read()
-            path = SVGPath(svg)
-            glyph_pen = TTGlyphPen(None)
-            path.draw(glyph_pen)
-            glyph = glyph_pen.glyph()
-            glyph.width = width
-            glyph.leftMargin = lsb
-            glyph.rightMargin = rsb
-            glyph.font = font_name
-            glyph.font_size = font_size
+    width_str = svg_root.attrib.get("width", "0")
+    height_str = svg_root.attrib.get("height", "0")
 
-            font.newGlyph(unicode_name)
-            font[unicode_name] = glyph
-    
-    font.save(output_ufo)
-    ttf_font = TTFont(output_ufo)
-    ttf_font.save(output_ttf)
+    width = float(re.sub(r'[^\d.]+', '', width_str))
+    height = float(re.sub(r'[^\d.]+', '', height_str))
+    glyph_name = Path(svg_path).stem
 
-def set_font_metadata(font_file, font_name):
-    ttf_font = TTFont(font_file)
-    for record in ttf_font["name"].names:
-        if record.nameID == 1:  
-            record.string = font_name.encode("utf-16be")
-        elif record.nameID == 2: 
-            record.string = font_name.encode("utf-16be")
-    ttf_font.save(font_file)
+    pen = RecordingPen()
+    pen.width = width
+    pen.height = height
 
+    svg_path_d = svg_root.find(".//{http://www.w3.org/2000/svg}path").attrib.get("d")
+    if svg_path_d:
+        parse_svg_path(svg_path_d, pen)
+    else:
+        logging.error(f"No 'd' attribute found in SVG path for file: {svg_path}")
+        return None, glyph_name
+
+    return pen.value, glyph_name
+
+def parse_svg_path(svg_path_d, pen):
+    commands = svg_path_d.split()
+    current_pos = (0, 0)
+    prev_ctrl_point = None
+
+    for command in commands:
+        if command.isalpha():
+            cmd = command.upper()
+            args = []
+
+            while len(args) < 6 and commands:
+                next_arg = commands.pop(0)
+                if next_arg.replace('.', '', 1).isdigit():
+                    args.append(float(next_arg))
+
+            if cmd == 'M':
+                pen.moveTo((args[0], args[1]))
+                current_pos = (args[0], args[1])
+                prev_ctrl_point = None
+            elif cmd == 'L':
+                pen.lineTo((args[0], args[1]))
+                current_pos = (args[0], args[1])
+                prev_ctrl_point = None
+            elif cmd == 'Q':
+                pen.qCurveTo((args[0], args[1]), (args[2], args[3]))
+                current_pos = (args[2], args[3])
+                prev_ctrl_point = (args[0], args[1])
+            elif cmd == 'C':
+                pen.curveTo((args[0], args[1]), (args[2], args[3]), (args[4], args[5]))
+                current_pos = (args[4], args[5])
+                prev_ctrl_point = (args[2], args[3])
+            elif cmd == 'Z':
+                pen.closePath()
+
+def create_font(svg_paths, output_font_path):
+    font = TTFont()
+
+    for svg_path in svg_paths:
+        glyph_data, glyph_name = svg_to_glyph(svg_path)
+        if glyph_data:
+            font.getGlyphSet()[glyph_name] = GlyphCoordinates(glyph_data)
+        else:
+            logging.error(f"Failed to create glyph data for file: {svg_path}")
+
+    output_font_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        font.save(output_font_path)
+    except Exception as e:
+        logging.error(f"Failed to save font: {e}")
+
+svg_directory = Path("data/derge_img/svg")  
+output_font_path = Path("data/derge_img/ttf/Derge_font.ttf")  # output font file path
 
 
 
@@ -230,12 +266,11 @@ def main():
                                 logging.info(f"Skipping duplicate ID: {image_id}")
                                 continue
                             processed_ids.add(image_id)
-
                             image_span = line["spans"]
                             png_image_path = get_image_path(line["image"])
 
                             cleaned_image_path = png_process(
-                                png_image_path, image_span, Path(f"data/derge_img/cleaned_images"))
+                                png_image_path, image_span, Path("data/derge_img/cleaned_images"))
 
                             if cleaned_image_path is None:
                                 logging.info(f"Skipping {png_image_path}")
@@ -244,7 +279,9 @@ def main():
                             svg_output_path = Path(f"data/derge_img/svg/{filename}.svg")
                             png_to_svg(cleaned_image_path, svg_output_path)
 
-                            convert_svg_to_ttf(svg_output_path)
+                            svg_files = list(svg_directory.glob("*.svg"))
+                            create_font(svg_files, output_font_path)
+
 
                         except Exception as e:
                             logging.error(f"Error processing image {line['image']}: {e}")
