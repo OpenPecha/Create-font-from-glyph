@@ -1,3 +1,5 @@
+from svgpathtools import svg2paths
+from glyphsLib import GSFont, GSGlyph
 from pathlib import Path
 from config import MONLAM_AI_OCR_BUCKET, monlam_ai_ocr_s3_client
 from PIL import Image, ImageDraw
@@ -14,8 +16,7 @@ from xml.etree import ElementTree as ET
 from fontTools.ttLib.tables._g_l_y_f import GlyphCoordinates
 from fontTools.ttLib import TTFont
 from fontTools.pens.recordingPen import RecordingPen
-
-
+import xml.etree.ElementTree as ET
 
 
 s3 = monlam_ai_ocr_s3_client
@@ -60,7 +61,7 @@ def get_image_output_path(cleaned_image, image_name, output_path, headlines):
     new_image_name = f"{glyph_name}_{int(right_edge - left_edge)}_{int(headline_starts - left_edge)}_{int(right_edge - headline_ends)}.png"
     image_output_path = f"{output_path}/{new_image_name}"
     # .for debug
-    print(new_image_name)
+
     return image_output_path
 
 
@@ -161,95 +162,49 @@ def png_to_svg(cleaned_image_path, svg_output_path):
     # rename the temp svg file to the original name
     os.rename(temp_svg_output_path, svg_output_path)
 
+#  cleaned svg
+
+def clean_svg(input_file, output_file):
+
+    tree = ET.parse(input_file)
+    root = tree.getroot()
+    for elem in root.iter('{http://www.w3.org/2000/svg}metadata'):
+        root.remove(elem)
+
+    svg_elem = root.find('{http://www.w3.org/2000/svg}svg')
+    if svg_elem is not None:
+        del svg_elem.attrib['version']
+        del svg_elem.attrib['preserveAspectRatio']
+        del svg_elem.attrib['width']
+        del svg_elem.attrib['height']
+    tree.write(output_file, xml_declaration=True, encoding='utf-8')
 
 
+def convert_svg_to_glyph(svg_path):
 
-logging.basicConfig(level=logging.INFO)
+    svg_file_name = os.path.basename(svg_path)
+    glyph_name = os.path.splitext(svg_file_name)[0]  
 
-def svg_to_glyph(svg_path):
-    with open(svg_path, "rb") as svg_file:
-        svg_data = svg_file.read()
+    unicode_value = [ord(char) for char in glyph_name]
+    paths, _ = svg2paths(svg_path)
 
-    try:
-        svg_root = ET.parse(BytesIO(svg_data)).getroot()
-    except ET.ParseError as e:
-        logging.error(f"Failed to parse SVG file: {svg_path}, error: {e}")
-        return None, None
+    font = GSFont()
 
-    width_str = svg_root.attrib.get("width", "0")
-    height_str = svg_root.attrib.get("height", "0")
+    glyph = GSGlyph(glyph_name)
+    glyph.unicode = unicode_value
 
-    width = float(re.sub(r'[^\d.]+', '', width_str))
-    height = float(re.sub(r'[^\d.]+', '', height_str))
-    glyph_name = Path(svg_path).stem
+    font.glyphs.append(glyph)
 
-    pen = RecordingPen()
-    pen.width = width
-    pen.height = height
+    # TODO convert SVG paths to glyph paths and add them to the glyph
 
-    svg_path_d = svg_root.find(".//{http://www.w3.org/2000/svg}path").attrib.get("d")
-    if svg_path_d:
-        parse_svg_path(svg_path_d, pen)
-    else:
-        logging.error(f"No 'd' attribute found in SVG path for file: {svg_path}")
-        return None, glyph_name
+    return glyph
 
-    return pen.value, glyph_name
-
-def parse_svg_path(svg_path_d, pen):
-    commands = svg_path_d.split()
-    current_pos = (0, 0)
-    prev_ctrl_point = None
-
-    for command in commands:
-        if command.isalpha():
-            cmd = command.upper()
-            args = []
-
-            while len(args) < 6 and commands:
-                next_arg = commands.pop(0)
-                if next_arg.replace('.', '', 1).isdigit():
-                    args.append(float(next_arg))
-
-            if cmd == 'M':
-                pen.moveTo((args[0], args[1]))
-                current_pos = (args[0], args[1])
-                prev_ctrl_point = None
-            elif cmd == 'L':
-                pen.lineTo((args[0], args[1]))
-                current_pos = (args[0], args[1])
-                prev_ctrl_point = None
-            elif cmd == 'Q':
-                pen.qCurveTo((args[0], args[1]), (args[2], args[3]))
-                current_pos = (args[2], args[3])
-                prev_ctrl_point = (args[0], args[1])
-            elif cmd == 'C':
-                pen.curveTo((args[0], args[1]), (args[2], args[3]), (args[4], args[5]))
-                current_pos = (args[4], args[5])
-                prev_ctrl_point = (args[2], args[3])
-            elif cmd == 'Z':
-                pen.closePath()
-
-def create_font(svg_paths, output_font_path):
-    font = TTFont()
-
-    for svg_path in svg_paths:
-        glyph_data, glyph_name = svg_to_glyph(svg_path)
-        if glyph_data:
-            font.getGlyphSet()[glyph_name] = GlyphCoordinates(glyph_data)
-        else:
-            logging.error(f"Failed to create glyph data for file: {svg_path}")
-
-    output_font_path.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        font.save(output_font_path)
-    except Exception as e:
-        logging.error(f"Failed to save font: {e}")
-
-svg_directory = Path("data/derge_img/svg")  
-output_font_path = Path("data/derge_img/ttf/Derge_font.ttf")  # output font file path
-
+svg_directory_path = "data/derge_img/cleaned_svg"
+for svg_file_name in os.listdir(svg_directory_path):
+    if svg_file_name.endswith('.svg'):
+        svg_file_path = os.path.join(svg_directory_path, svg_file_name)
+        glyph = convert_svg_to_glyph(svg_file_path)
+        print(f"Glyph Name: {glyph.name}, Unicode Value: {glyph.unicode}")
 
 
 def main():
@@ -279,9 +234,9 @@ def main():
                             svg_output_path = Path(f"data/derge_img/svg/{filename}.svg")
                             png_to_svg(cleaned_image_path, svg_output_path)
 
-                            svg_files = list(svg_directory.glob("*.svg"))
-                            create_font(svg_files, output_font_path)
-
+                            input_svg = Path(svg_output_path)
+                            output_cleaned_svg = Path(f"data/derge_img/cleaned_svg/{filename}.svg")
+                            clean_svg(input_svg, output_cleaned_svg)
 
                         except Exception as e:
                             logging.error(f"Error processing image {line['image']}: {e}")
