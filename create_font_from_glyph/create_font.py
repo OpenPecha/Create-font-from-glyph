@@ -1,5 +1,3 @@
-from svgpathtools import svg2paths
-from glyphsLib import GSFont, GSGlyph
 from pathlib import Path
 from config import MONLAM_AI_OCR_BUCKET, monlam_ai_ocr_s3_client
 from PIL import Image, ImageDraw
@@ -17,6 +15,8 @@ from fontTools.ttLib.tables._g_l_y_f import GlyphCoordinates
 from fontTools.ttLib import TTFont
 from fontTools.pens.recordingPen import RecordingPen
 import xml.etree.ElementTree as ET
+from svgpathtools import svg2paths
+from glyphsLib import GSFont, GSGlyph, GSNode, GSGlyphPath
 
 
 s3 = monlam_ai_ocr_s3_client
@@ -164,6 +164,7 @@ def png_to_svg(cleaned_image_path, svg_output_path):
 
 #  cleaned svg
 
+
 def clean_svg(input_file, output_file):
 
     tree = ET.parse(input_file)
@@ -180,8 +181,8 @@ def clean_svg(input_file, output_file):
     tree.write(output_file, xml_declaration=True, encoding='utf-8')
 
 
-def convert_svg_to_glyph(svg_path):
 
+def convert_svg_to_glyph(svg_path):
     svg_file_name = os.path.basename(svg_path)
     glyph_name = os.path.splitext(svg_file_name)[0]  
 
@@ -193,9 +194,14 @@ def convert_svg_to_glyph(svg_path):
     glyph = GSGlyph(glyph_name)
     glyph.unicode = unicode_value
 
-    font.glyphs.append(glyph)
+    for path in paths:
+        for segment in path:
+            glyph_path = GSGlyphPath()
+            for point in segment:
+                glyph_path.nodes.append(GSNode(point))
+            glyph.layers[0].paths.append(glyph_path)
 
-    # TODO convert SVG paths to glyph paths and add them to the glyph
+    font.glyphs.append(glyph)
 
     return glyph
 
@@ -205,7 +211,6 @@ for svg_file_name in os.listdir(svg_directory_path):
         svg_file_path = os.path.join(svg_directory_path, svg_file_name)
         glyph = convert_svg_to_glyph(svg_file_path)
         print(f"Glyph Name: {glyph.name}, Unicode Value: {glyph.unicode}")
-
 
 def main():
     jsonl_paths = list(Path("derge/glyph_ann_reviewed_batch6_ga").iterdir())
