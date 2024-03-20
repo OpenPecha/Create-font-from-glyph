@@ -9,14 +9,10 @@ import logging
 import traceback
 import re
 import subprocess
-from io import BytesIO
 from xml.etree import ElementTree as ET
-from fontTools.ttLib.tables._g_l_y_f import GlyphCoordinates
-from fontTools.ttLib import TTFont
-from fontTools.pens.recordingPen import RecordingPen
 import xml.etree.ElementTree as ET
 from svgpathtools import svg2paths
-from glyphsLib import GSFont, GSGlyph, GSNode, GSGlyphPath
+
 
 
 s3 = monlam_ai_ocr_s3_client
@@ -180,37 +176,58 @@ def clean_svg(input_file, output_file):
         del svg_elem.attrib['height']
     tree.write(output_file, xml_declaration=True, encoding='utf-8')
 
+from svgpathtools import svg2paths, wsvg
+import os
+
+def convert_svgs_to_glyphs(input_dir, output_dir):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    for filename in os.listdir(input_dir):
+        if filename.endswith(".svg"):
+            svg_file_path = os.path.join(input_dir, filename)
+            unicode_codepoint = extract_unicode_from_filename(filename)
+            glyph_name = f"uni{unicode_codepoint.upper()}"
+            output_svg_path = os.path.join(output_dir, f"{glyph_name}.svg")
+            try:
+                create_glyph_svg(svg_file_path, output_svg_path, glyph_name, unicode_codepoint)
+            except Exception as e:
+                print(f"Error processing {svg_file_path}: {e}")
+
+def extract_unicode_from_filename(filename):
+    unicode_hex = filename.split("_")[1]
+    unicode_value = int(unicode_hex, 16)
+    return format(unicode_value, 'X')
+
+import xml.etree.ElementTree as ET
+
+def create_glyph_svg(svg_file_path, output_svg_path, glyph_name, unicode_codepoint):
+    try:
+        tree = ET.parse(svg_file_path)
+        root = tree.getroot()
+        paths = root.findall('.//{http://www.w3.org/2000/svg}path')
+
+        if paths:
+            with open(output_svg_path, 'w') as f:
+                f.write('<svg xmlns="http://www.w3.org/2000/svg">\n')
+                for path in paths:
+                    f.write(ET.tostring(path, encoding='unicode'))
+                f.write('</svg>\n')
+
+            print(f"Saved {glyph_name} glyph with Unicode {unicode_codepoint}")
+        else:
+            print(f"No paths found in {svg_file_path}")
+    except Exception as e:
+        print(f"Error converting {svg_file_path} to glyph: {e}")
 
 
-def convert_svg_to_glyph(svg_path):
-    svg_file_name = os.path.basename(svg_path)
-    glyph_name = os.path.splitext(svg_file_name)[0]  
+input_directory = Path("data/derge_img/cleaned_svg")
+output_directory = "data/derge_img/glyphs"
+convert_svgs_to_glyphs(input_directory, output_directory)
 
-    unicode_value = [ord(char) for char in glyph_name]
-    paths, _ = svg2paths(svg_path)
 
-    font = GSFont()
-
-    glyph = GSGlyph(glyph_name)
-    glyph.unicode = unicode_value
-
-    for path in paths:
-        for segment in path:
-            glyph_path = GSGlyphPath()
-            for point in segment:
-                glyph_path.nodes.append(GSNode(point))
-            glyph.layers[0].paths.append(glyph_path)
-
-    font.glyphs.append(glyph)
-
-    return glyph
-
-svg_directory_path = "data/derge_img/cleaned_svg"
-for svg_file_name in os.listdir(svg_directory_path):
-    if svg_file_name.endswith('.svg'):
-        svg_file_path = os.path.join(svg_directory_path, svg_file_name)
-        glyph = convert_svg_to_glyph(svg_file_path)
-        print(f"Glyph Name: {glyph.name}, Unicode Value: {glyph.unicode}")
+    
+ 
 
 def main():
     jsonl_paths = list(Path("derge/glyph_ann_reviewed_batch6_ga").iterdir())
