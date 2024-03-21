@@ -9,10 +9,19 @@ import logging
 import traceback
 import re
 import subprocess
-
 from xml.etree import ElementTree as ET
 import xml.etree.ElementTree as ET
-from svgpathtools import svg2paths
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib import TTFont, TTLibError
+import os
+import xml.etree.ElementTree as ET
+from fontTools.ttLib import TTFont
+from fontTools.ttLib.tables._g_l_y_f import Glyph
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.misc.transform import Identity
+import xml.etree.ElementTree as ET
+
+
 
 
 
@@ -177,69 +186,89 @@ def clean_svg(input_file, output_file):
         del svg_elem.attrib['height']
     tree.write(output_file, xml_declaration=True, encoding='utf-8')
 
-import os
-import xml.etree.ElementTree as ET
-from fontTools.pens.ttGlyphPen import TTGlyphPen
-from fontTools.ttLib import TTFont, TTLibError
 
-def parse_svg_path(svg_path):
-    tree = ET.parse(svg_path)
-    root = tree.getroot()
+def parse_svg_path_commands(svg_path_data):
+    commands = []
+    current_command = ''
+    numbers = ''
+    for char in svg_path_data:
+        if char.isalpha():  
+            if current_command:
+                commands.append((current_command, numbers.strip()))
+            current_command = char
+            numbers = ''
+        elif char.isdigit() or char in '.-':  
+            numbers += char
+        elif char == ',':
+            numbers += ' '
 
-    # Assuming there's only one path element in the SVG file
-    path_element = root.find('.//{http://www.w3.org/2000/svg}path')
-    
-    if path_element is not None:
-        path_data = path_element.get('d')
-        return path_data
-    else:
-        return None
+    if current_command:
+        commands.append((current_command, numbers.strip()))
 
-def create_font_glyph(font, glyph_name, svg_path):
-    path_data = parse_svg_path(svg_path)
-    if path_data is not None:
-        glyph_pen = TTGlyphPen()
-        glyph_pen.moveTo((0, 0))  # Move to starting point (0, 0) for the glyph
+    return commands
 
-        # Parse and draw the SVG path commands using the pen
-        pen_commands = {
-            'M': glyph_pen.moveTo,
-            'L': glyph_pen.lineTo,
-            'Q': glyph_pen.qCurveTo,
-            'C': glyph_pen.curveTo,
-            'Z': glyph_pen.closePath,
-        }
+def parse_svg(svg_path):
+    try:
+        tree = ET.parse(svg_path)
+        root = tree.getroot()
+        paths = root.findall('.//{http://www.w3.org/2000/svg}path')
+        for path in paths:
+            path_data = path.attrib['d']
+            commands = parse_svg_path_commands(path_data)
+            yield commands
+    except Exception as e:
+        print(f"error parsing svg: {e}")
 
-        path_segments = path_data.split()
-        current_command = None
-        for segment in path_segments:
-            if segment.isalpha():
-                current_command = segment
-            else:
-                args = [float(arg) for arg in segment.split(',')]
-                pen_commands[current_command](*args)
+def convert_svgs_to_glyphs(input_dir, output_ttf_path):
+    if not os.path.exists(input_dir):
+        print(f"no input directry")
+        return
 
-        glyph_pen.endPath()
-        glyph_set = font.getGlyphSet()
-        glyph_set[glyph_name] = glyph_pen.glyph()
-    else:
-        print(f"Error: SVG path not found in {svg_path}")
+    glyphs = {}
+    for filename in os.listdir(input_dir):
+        if filename.endswith(".svg"):
+            svg_file_path = os.path.join(input_dir, filename)
+            unicode_codepoint = extract_unicode_from_filename(filename)
+            glyph_name = f"uni{unicode_codepoint.upper()}"
+            glyphs[glyph_name] = create_glyph_svg(svg_file_path)
 
-# Example usage
-font = TTFont()  # Create a new font
-svg_directory = 'data/derge_img/cleaned_svg'
+    create_ttf_font(glyphs, output_ttf_path)
 
-# Iterate through all SVG files in the directory
-for filename in os.listdir(svg_directory):
-    if filename.endswith('.svg'):
-        glyph_name = os.path.splitext(filename)[0]  # Extract glyph name from filename
-        svg_path = os.path.join(svg_directory, filename)
-        create_font_glyph(font, glyph_name, svg_path)
+def extract_unicode_from_filename(filename):
+    unicode_hex = filename.split("_")[1]
+    unicode_value = int(unicode_hex, 16)
+    return format(unicode_value, 'X')
 
-try:
-    font.save('output_font.ttf')
-except TTLibError as e:
-    print(f"Error saving font: {e}")
+def create_glyph_svg(svg_file_path):
+    try:
+        svg_commands = parse_svg(svg_file_path)
+        glyph_pen = TTGlyphPen(None)
+        for commands in svg_commands:
+            for command in commands:
+                glyph_pen._moveTo(command[1]) if command[0] == 'M' else None
+                glyph_pen._lineTo(command[1]) if command[0] == 'L' else None
+                glyph_pen._curveToOne(command[1], command[2], command[3]) if command[0] == 'C' else None
+                glyph_pen._closePath() if command[0] == 'Z' else None
+
+        glyph = Glyph()
+        glyph_pen.end(glyph)
+        return glyph
+    except Exception as e:
+        print(f"error converting svg to glyph: {e}")
+
+def create_ttf_font(glyphs, output_ttf_path):
+    font = TTFont()
+    font.setGlyphOrder(sorted(glyphs.keys()))
+
+    for glyph_name, glyph in glyphs.items():
+        font['glyf'][glyph_name] = glyph
+
+    font.save(output_ttf_path)
+    print(f"custom font saved at {output_ttf_path}")
+
+input_directory = "data/derge_img/glyphs"
+output_ttf_path = "data/derge_img/custom_font.ttf"
+convert_svgs_to_glyphs(input_directory, output_ttf_path)
 
     
  
