@@ -3,17 +3,27 @@ from config import MONLAM_AI_OCR_BUCKET, monlam_ai_ocr_s3_client
 from PIL import Image, ImageDraw
 import urllib.parse
 import os
-import svgwrite
-import base64
-from PIL import Image, ImageFont, ImageOps
-from fontTools.ufoLib import UFOWriter
-from fontTools.ttLib import TTFont
-from fontTools.pens.ttGlyphPen import TTGlyphPen
 import numpy as np
 import jsonlines
 import logging
 import traceback
 import re
+import subprocess
+from xml.etree import ElementTree as ET
+import xml.etree.ElementTree as ET
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.ttLib import TTFont, TTLibError
+import os
+import xml.etree.ElementTree as ET
+from fontTools.ttLib import TTFont
+from fontTools.ttLib.tables._g_l_y_f import Glyph
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.misc.transform import Identity
+import xml.etree.ElementTree as ET
+
+
+
+
 
 s3 = monlam_ai_ocr_s3_client
 bucket_name = MONLAM_AI_OCR_BUCKET
@@ -42,8 +52,9 @@ def get_image_path(image_url):
     return fr"data/derge_img/downloaded_glyph/{image_name_tibetan_only}{file_extension}"
 
 # new image name
+
+
 def get_image_output_path(cleaned_image, image_name, output_path, headlines):
-    image_width = cleaned_image.width
     headline_starts = headlines["headline_starts"]
     headline_ends = headlines["headline_ends"]
     glyph_name = image_name.split(".")[0].split("_")[0]
@@ -56,8 +67,7 @@ def get_image_output_path(cleaned_image, image_name, output_path, headlines):
     new_image_name = f"{glyph_name}_{int(right_edge - left_edge)}_{int(headline_starts - left_edge)}_{int(right_edge - headline_ends)}.png"
     image_output_path = f"{output_path}/{new_image_name}"
     # .for debug
-    print(new_image_name)
-    # print(image_width)
+
     return image_output_path
 
 
@@ -65,16 +75,15 @@ def get_image_output_path(cleaned_image, image_name, output_path, headlines):
 
 def get_edges(cleaned_image):
     if cleaned_image.mode != '1':
-        cleaned_image =cleaned_image.convert('1')
+        cleaned_image = cleaned_image.convert('1')
     image_array = np.array(cleaned_image)
     image_array = image_array[:, 1:-1]
-    black_pixels = np.where(image_array == 0) 
+    black_pixels = np.where(image_array == 0)
     if black_pixels[0].size == 0 or black_pixels[1].size == 0:
         return None, None
 
     left_edge = np.min(black_pixels[1]) + 1
     right_edge = np.max(black_pixels[1]) + 1
-    # print(f"Left edge: {left_edge}, Right edge: {right_edge}")
     return left_edge, right_edge
 
 
@@ -88,15 +97,12 @@ def get_headlines(baselines_coord):
         "headline_starts": min_x,
         "headline_ends": max_x
     }
-    print(headlines)
     return headlines
 
-# --function to process the image-- 
-# 1.convert outside of poly to white
-# 2.turn the background transparent
-# 3.apply anti aliasing/ yet
+# convert outside to white
 
-def png_process(png_image_path, span, cleaned_output_path):
+
+def png_process(png_image_path, span, cleaned_image_path):
     baselines_coord = None
     polygon_points = None
     for info in span:
@@ -106,7 +112,7 @@ def png_process(png_image_path, span, cleaned_output_path):
             polygon_points = [(x, y) for x, y in info["points"]]
     if baselines_coord is None or polygon_points is None:
         return None
-    
+
     image = Image.open(png_image_path)
     mask = Image.new("L", image.size, 0)
     draw = ImageDraw.Draw(mask)
@@ -115,9 +121,10 @@ def png_process(png_image_path, span, cleaned_output_path):
     cleaned_image.paste(image, mask=mask)
 
     headlines = get_headlines(baselines_coord)
-    cleaned_output_path = get_image_output_path(cleaned_image, png_image_path.split('/')[-1], cleaned_output_path, headlines)
+    cleaned_image_path = get_image_output_path(
+        cleaned_image, png_image_path.split('/')[-1], cleaned_image_path, headlines)
 
-    if cleaned_output_path is not None:
+    if cleaned_image_path is not None:
         cleaned_image = cleaned_image.convert("RGBA")  # convert white regions to transparent
         data = cleaned_image.getdata()
         newData = []
@@ -127,49 +134,144 @@ def png_process(png_image_path, span, cleaned_output_path):
             else:
                 newData.append(item)
         cleaned_image.putdata(newData)
-        cleaned_image.save(cleaned_output_path)
-        return cleaned_output_path
+        cleaned_image.save(cleaned_image_path)
+        return cleaned_image_path
     else:
         return None
 
 
-
+# for finding bounding box
 def find_glyph_bbox(image):
     gray_image = image.convert('L')
     binary_image = gray_image.point(lambda p: p < 128 and 255)
     bbox = binary_image.getbbox()
     return bbox
 
+
 # convert png to svg
 
+def png_to_svg(cleaned_image_path, svg_output_path):
+    image = Image.open(cleaned_image_path).convert('1')
+    pbm_path = "temp.pbm"
+    image.save(pbm_path)
+    sanitized_filename = re.sub('[^A-Za-z0-9_.]+', '', Path(cleaned_image_path).stem)
 
-def create_svg_with_glyph(png_path, output_svg_path, scale_factor=10):
-    with Image.open(png_path) as img:
-        bbox = find_glyph_bbox(img)
+    # create a temp svg_output_path for sanitized name
+    temp_svg_output_path = Path(f"data/derge_img/svg/{sanitized_filename}.svg")
 
-        if bbox is None:
-            raise ValueError("No glyph found in the image.")
+    subprocess.run(["potrace", pbm_path, "-s", "--scale", "5.5", "-o", temp_svg_output_path])
+    os.remove(pbm_path)
 
-        left, upper, right, lower = bbox
-        with open(png_path, "rb") as f:
-            png_base64 = base64.b64encode(f.read()).decode('utf-8')
+    if os.path.exists(svg_output_path):
+        os.remove(svg_output_path)
 
-        width = (right - left) * scale_factor
-        height = (lower - upper) * scale_factor
+    # rename the temp svg file to the original name
+    os.rename(temp_svg_output_path, svg_output_path)
 
-        dwg = svgwrite.Drawing(output_svg_path, profile='tiny', size=(f'{width}px', f'{height}px'))
-        image = svgwrite.image.Image(href=f'data:image/png;base64,{png_base64}')
-        image['x'] = f'0px'
-        image['y'] = f'0px'
-        image['width'] = f'{width}px'
-        image['height'] = f'{height}px'
-        dwg.add(image)
-        dwg.save()
+#  cleaned svg
 
 
-# assing unicode / yet to write
-# create font into desired format / yet to write
+def clean_svg(input_file, output_file):
 
+    tree = ET.parse(input_file)
+    root = tree.getroot()
+    for elem in root.iter('{http://www.w3.org/2000/svg}metadata'):
+        root.remove(elem)
+
+    svg_elem = root.find('{http://www.w3.org/2000/svg}svg')
+    if svg_elem is not None:
+        del svg_elem.attrib['version']
+        del svg_elem.attrib['preserveAspectRatio']
+        del svg_elem.attrib['width']
+        del svg_elem.attrib['height']
+    tree.write(output_file, xml_declaration=True, encoding='utf-8')
+
+
+def parse_svg_path_commands(svg_path_data):
+    commands = []
+    current_command = ''
+    numbers = ''
+    for char in svg_path_data:
+        if char.isalpha():  
+            if current_command:
+                commands.append((current_command, numbers.strip()))
+            current_command = char
+            numbers = ''
+        elif char.isdigit() or char in '.-':  
+            numbers += char
+        elif char == ',':
+            numbers += ' '
+
+    if current_command:
+        commands.append((current_command, numbers.strip()))
+
+    return commands
+
+def parse_svg(svg_path):
+    try:
+        tree = ET.parse(svg_path)
+        root = tree.getroot()
+        paths = root.findall('.//{http://www.w3.org/2000/svg}path')
+        for path in paths:
+            path_data = path.attrib['d']
+            commands = parse_svg_path_commands(path_data)
+            yield commands
+    except Exception as e:
+        print(f"error parsing svg: {e}")
+
+def convert_svgs_to_glyphs(input_dir, output_ttf_path):
+    if not os.path.exists(input_dir):
+        print(f"no input directry")
+        return
+
+    glyphs = {}
+    for filename in os.listdir(input_dir):
+        if filename.endswith(".svg"):
+            svg_file_path = os.path.join(input_dir, filename)
+            unicode_codepoint = extract_unicode_from_filename(filename)
+            glyph_name = f"uni{unicode_codepoint.upper()}"
+            glyphs[glyph_name] = create_glyph_svg(svg_file_path)
+
+    create_ttf_font(glyphs, output_ttf_path)
+
+def extract_unicode_from_filename(filename):
+    unicode_hex = filename.split("_")[1]
+    unicode_value = int(unicode_hex, 16)
+    return format(unicode_value, 'X')
+
+def create_glyph_svg(svg_file_path):
+    try:
+        svg_commands = parse_svg(svg_file_path)
+        glyph_pen = TTGlyphPen(None)
+        for commands in svg_commands:
+            for command in commands:
+                glyph_pen._moveTo(command[1]) if command[0] == 'M' else None
+                glyph_pen._lineTo(command[1]) if command[0] == 'L' else None
+                glyph_pen._curveToOne(command[1], command[2], command[3]) if command[0] == 'C' else None
+                glyph_pen._closePath() if command[0] == 'Z' else None
+
+        glyph = Glyph()
+        glyph_pen.end(glyph)
+        return glyph
+    except Exception as e:
+        print(f"error converting svg to glyph: {e}")
+
+def create_ttf_font(glyphs, output_ttf_path):
+    font = TTFont()
+    font.setGlyphOrder(sorted(glyphs.keys()))
+
+    for glyph_name, glyph in glyphs.items():
+        font['glyf'][glyph_name] = glyph
+
+    font.save(output_ttf_path)
+    print(f"custom font saved at {output_ttf_path}")
+
+input_directory = "data/derge_img/glyphs"
+output_ttf_path = "data/derge_img/custom_font.ttf"
+convert_svgs_to_glyphs(input_directory, output_ttf_path)
+
+    
+ 
 
 def main():
     jsonl_paths = list(Path("derge/glyph_ann_reviewed_batch6_ga").iterdir())
@@ -185,17 +287,22 @@ def main():
                                 logging.info(f"Skipping duplicate ID: {image_id}")
                                 continue
                             processed_ids.add(image_id)
-
                             image_span = line["spans"]
                             png_image_path = get_image_path(line["image"])
+
                             cleaned_image_path = png_process(
-                                png_image_path, image_span, Path(f"data/derge_img/cleaned_images"))
+                                png_image_path, image_span, Path("data/derge_img/cleaned_images"))
+
                             if cleaned_image_path is None:
                                 logging.info(f"Skipping {png_image_path}")
                                 continue
-                            filename = (cleaned_image_path.split("/")[-1]).split(".")[0]
-                            output_path = Path(f"data/derge_img/svg/{filename}.svg")
-                            create_svg_with_glyph(cleaned_image_path, output_path)
+                            filename = Path(cleaned_image_path).stem
+                            svg_output_path = Path(f"data/derge_img/svg/{filename}.svg")
+                            png_to_svg(cleaned_image_path, svg_output_path)
+
+                            input_svg = Path(svg_output_path)
+                            output_cleaned_svg = Path(f"data/derge_img/cleaned_svg/{filename}.svg")
+                            clean_svg(input_svg, output_cleaned_svg)
 
                         except Exception as e:
                             logging.error(f"Error processing image {line['image']}: {e}")
