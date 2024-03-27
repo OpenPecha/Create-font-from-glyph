@@ -9,20 +9,12 @@ import logging
 import traceback
 import re
 import subprocess
-from xml.etree import ElementTree as ET
-import xml.etree.ElementTree as ET
 from fontTools.pens.ttGlyphPen import TTGlyphPen
-from fontTools.ttLib import TTFont, TTLibError
-import os
-import xml.etree.ElementTree as ET
+from fontTools.svgLib import SVGPath
+from fontTools.ufoLib.glifLib import Glyph
 from fontTools.ttLib import TTFont
-from fontTools.ttLib.tables._g_l_y_f import Glyph
-from fontTools.pens.ttGlyphPen import TTGlyphPen
-from fontTools.misc.transform import Identity
-import xml.etree.ElementTree as ET
-
-
-
+from svg.path import parse_path
+from xml.dom.minidom import parse
 
 
 s3 = monlam_ai_ocr_s3_client
@@ -168,110 +160,89 @@ def png_to_svg(cleaned_image_path, svg_output_path):
     # rename the temp svg file to the original name
     os.rename(temp_svg_output_path, svg_output_path)
 
-#  cleaned svg
+
+# determing unicdode
+def extract_codepoints(filename):
+    tibetan_char = filename.split('_')[0]
+    codepoints = [ord(char) for char in tibetan_char]
+    return codepoints
+
+# for assigning glyph name
 
 
-def clean_svg(input_file, output_file):
-
-    tree = ET.parse(input_file)
-    root = tree.getroot()
-    for elem in root.iter('{http://www.w3.org/2000/svg}metadata'):
-        root.remove(elem)
-
-    svg_elem = root.find('{http://www.w3.org/2000/svg}svg')
-    if svg_elem is not None:
-        del svg_elem.attrib['version']
-        del svg_elem.attrib['preserveAspectRatio']
-        del svg_elem.attrib['width']
-        del svg_elem.attrib['height']
-    tree.write(output_file, xml_declaration=True, encoding='utf-8')
+def generate_glyph_name(codepoints):
+    glyph_name = 'uni' + ''.join(f"{codepoint:04X}" for codepoint in codepoints)
+    return glyph_name
 
 
-def parse_svg_path_commands(svg_path_data):
-    commands = []
-    current_command = ''
-    numbers = ''
-    for char in svg_path_data:
-        if char.isalpha():  
-            if current_command:
-                commands.append((current_command, numbers.strip()))
-            current_command = char
-            numbers = ''
-        elif char.isdigit() or char in '.-':  
-            numbers += char
-        elif char == ',':
-            numbers += ' '
+# get the dimension of svg
+def get_svg_size(svg_file_path):
+    doc = parse(svg_file_path)
+    path_strings = [path.getAttribute('d') for path in doc.getElementsByTagName('path')]
+    min_x = min_y = float('inf')
+    max_x = max_y = float('-inf')
+    for path_string in path_strings:
+        path_data = parse_path(path_string)
+        for move in path_data:
+            min_x = min(min_x, move.start.real, move.end.real)
+            max_x = max(max_x, move.start.real, move.end.real)
+            min_y = min(min_y, move.start.imag, move.end.imag)
+            max_y = max(max_y, move.start.imag, move.end.imag)
+    width = max_x - min_x
+    height = max_y - min_y
+    return width, height
 
-    if current_command:
-        commands.append((current_command, numbers.strip()))
+# to parse the svg
 
-    return commands
 
-def parse_svg(svg_path):
-    try:
-        tree = ET.parse(svg_path)
-        root = tree.getroot()
-        paths = root.findall('.//{http://www.w3.org/2000/svg}path')
-        for path in paths:
-            path_data = path.attrib['d']
-            commands = parse_svg_path_commands(path_data)
-            yield commands
-    except Exception as e:
-        print(f"error parsing svg: {e}")
+def parse_svg_to_glyph(svg_file_path, glyph_name=None, unicodes=None, glyph_set=None):
+   
+    pen = TTGlyphPen(glyph_set)
+    path = SVGPath(svg_file_path)
+    path.draw(pen)
+    glyph = pen.glyph() 
+    glyph.name = glyph_name
+    glyph.width, glyph.height = get_svg_size(svg_file_path)
+    glyph.unicodes = unicodes or []
 
-def convert_svgs_to_glyphs(input_dir, output_ttf_path):
-    if not os.path.exists(input_dir):
-        print(f"no input directry")
-        return
+    # print(f"Created glyph '{glyph.name}' with width {glyph.width}, height {glyph.height}, and unicodes {glyph.unicodes}")
 
-    glyphs = {}
-    for filename in os.listdir(input_dir):
-        if filename.endswith(".svg"):
-            svg_file_path = os.path.join(input_dir, filename)
-            unicode_codepoint = extract_unicode_from_filename(filename)
-            glyph_name = f"uni{unicode_codepoint.upper()}"
-            glyphs[glyph_name] = create_glyph_svg(svg_file_path)
+    return glyph
 
-    create_ttf_font(glyphs, output_ttf_path)
 
-def extract_unicode_from_filename(filename):
-    unicode_hex = filename.split("_")[1]
-    unicode_value = int(unicode_hex, 16)
-    return format(unicode_value, 'X')
 
-def create_glyph_svg(svg_file_path):
-    try:
-        svg_commands = parse_svg(svg_file_path)
-        glyph_pen = TTGlyphPen(None)
-        for commands in svg_commands:
-            for command in commands:
-                glyph_pen._moveTo(command[1]) if command[0] == 'M' else None
-                glyph_pen._lineTo(command[1]) if command[0] == 'L' else None
-                glyph_pen._curveToOne(command[1], command[2], command[3]) if command[0] == 'C' else None
-                glyph_pen._closePath() if command[0] == 'Z' else None
+def create_glyph(directory_path, width=0, height=0, unicodes=None, glyph_set=None):
+    glyph_objects = []
+    processed_files = set() 
+    for filename in os.listdir(directory_path):
+        if filename.endswith('.svg'):
+            svg_file_path = os.path.join(directory_path, filename)
+            if svg_file_path in processed_files: 
+                continue
+            codepoints = extract_codepoints(filename)
+            print(f"Processing file: {filename}, Codepoints: {codepoints}") 
+            glyph_name = generate_glyph_name(codepoints)
+            glyph = parse_svg_to_glyph(svg_file_path, glyph_name, codepoints, glyph_set)
+            glyph_objects.append(glyph)
+            processed_files.add(svg_file_path) 
+    return glyph_objects
 
-        glyph = Glyph()
-        glyph_pen.end(glyph)
-        return glyph
-    except Exception as e:
-        print(f"error converting svg to glyph: {e}")
 
-def create_ttf_font(glyphs, output_ttf_path):
-    font = TTFont()
-    font.setGlyphOrder(sorted(glyphs.keys()))
 
-    for glyph_name, glyph in glyphs.items():
-        font['glyf'][glyph_name] = glyph
+# to create new font
+# def replace_glyphs_in_font(font_path, svg_directory_path, new_font_path):
+#     font = TTFont(font_path)
+#     glyph_objects = create_glyph(svg_directory_path)
 
-    font.save(output_ttf_path)
-    print(f"custom font saved at {output_ttf_path}")
+#     for glyph_object in glyph_objects:
+#         font['glyf'][glyph_object.name] = glyph_object
+#         for unicode in glyph_object.unicodes:
+#             font['cmap'].tables[0].cmap[unicode] = glyph_object.name
 
-input_directory = "data/derge_img/glyphs"
-output_ttf_path = "data/derge_img/custom_font.ttf"
-convert_svgs_to_glyphs(input_directory, output_ttf_path)
+#     font.save(new_font_path)
 
-    
- 
+#     print(f"new font created at  {new_font_path}.")
+
 
 def main():
     jsonl_paths = list(Path("derge/glyph_ann_reviewed_batch6_ga").iterdir())
@@ -300,9 +271,10 @@ def main():
                             svg_output_path = Path(f"data/derge_img/svg/{filename}.svg")
                             png_to_svg(cleaned_image_path, svg_output_path)
 
-                            input_svg = Path(svg_output_path)
-                            output_cleaned_svg = Path(f"data/derge_img/cleaned_svg/{filename}.svg")
-                            clean_svg(input_svg, output_cleaned_svg)
+                            directory_path = "data/derge_img/svg"
+                            glyphs = create_glyph(directory_path)
+                            for glyph in glyphs:
+                                print(f"Glyph Name: {glyph.name}, Unicode Codepoints: {glyph.unicodes}")
 
                         except Exception as e:
                             logging.error(f"Error processing image {line['image']}: {e}")
@@ -310,6 +282,12 @@ def main():
         except Exception as e:
             logging.error(f"Error processing {jsonl_path}: {e}")
 
+# def main():
+    
+#     directory_path = r"C:\Users\tenka\monlam\create-font-from-glyph\test-create-font-from-glyph\data\derge_img\svg"
+#     glyphs = create_glyph(directory_path)
+#     for glyph in glyphs:
+#         print(f"Glyph Name: {glyph.name}, Unicode Codepoints: {glyph.unicodes}")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

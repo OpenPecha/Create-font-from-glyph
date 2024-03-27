@@ -129,9 +129,5 @@ dmypy.json
 .pyre/
 
 # Ignore folder
-derge/
-aws/
 data/
-pecing/
-shul/
-tests/
+
