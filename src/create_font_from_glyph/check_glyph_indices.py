@@ -1,6 +1,6 @@
 from fontTools.ttLib import TTFont
 
-font_path = 'C:/Users/tenka/monlam/create-font-from-glyph/test-create-font-from-glyph/create_font_from_glyph/sambhotaUnicodeBaseShip.ttf'
+font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
 font = TTFont(font_path)
 cmap = font['cmap']
 glyph_indices = {}
