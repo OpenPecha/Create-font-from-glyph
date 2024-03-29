@@ -1,3 +1,6 @@
+
+
+
 from pathlib import Path
 from config import MONLAM_AI_OCR_BUCKET, monlam_ai_ocr_s3_client
 from PIL import Image, ImageDraw

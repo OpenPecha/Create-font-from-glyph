@@ -1,3 +1,4 @@
+from fontTools.ttLib.tables._g_l_y_f import Glyph as TTGlyph
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.svgLib import SVGPath
 from fontTools.ufoLib.glifLib import Glyph
@@ -7,7 +8,9 @@ from xml.dom.minidom import parse
 from fontTools.ttLib import TTFont
 
 # determining the bounding box of svg
-def calculate_bounding_box(svg_file_path):
+
+
+def calculate_bounding_box_of_svg(svg_file_path):
     doc = parse(svg_file_path)
     path_strings = [path.getAttribute('d') for path in doc.getElementsByTagName('path')]
     all_coords = []
@@ -22,8 +25,9 @@ def calculate_bounding_box(svg_file_path):
     yMin, yMax = min(y_coords), max(y_coords)
     return xMin, xMax, yMin, yMax
 
+
 # parsing the svg path to write glyph from the path
-from fontTools.ttLib.tables._g_l_y_f import Glyph as TTGlyph
+
 
 def parse_svg_to_glyph(svg_file_path, glyph_name=None, unicodes=None, glyph_set=None, advance_width=0, lsb=0, rsb=0, xMin=0, xMax=0, yMin=0, yMax=0):
     glyph = TTGlyph()
@@ -36,10 +40,11 @@ def parse_svg_to_glyph(svg_file_path, glyph_name=None, unicodes=None, glyph_set=
     pen = TTGlyphPen(glyph)
     path = SVGPath(svg_file_path)
     path.draw(pen)
-    xMin, xMax, yMin, yMax = calculate_bounding_box(svg_file_path)
+    xMin, xMax, yMin, yMax = calculate_bounding_box_of_svg(svg_file_path)
     glyph.drawPoints = lambda pen: pen.drawRect((xMin, yMin, xMax, yMax))
 
     return glyph
+
 
 def extract_codepoints(filename):
     tibetan_char = filename.split('_')[0]
@@ -59,7 +64,7 @@ def create_glyph(directory_path, width=0, height=0, glyph_set=None):
             svg_file_path = os.path.join(directory_path, filename)
             codepoints = extract_codepoints(filename)
             glyph_name = generate_glyph_name(codepoints)
-            xMin, xMax, yMin, yMax = calculate_bounding_box(svg_file_path)
+            xMin, xMax, yMin, yMax = calculate_bounding_box_of_svg(svg_file_path)
             advance_width = xMax - xMin
             lsb = xMin
             rsb = advance_width - (width + lsb)
@@ -90,10 +95,21 @@ def replace_glyphs(font, glyphs):
 
 def modify_font_name(font, new_name):
     name_table = font['name']
+    for name in name_table.names:
+        print(f"old name ID {name.nameID}: {name.toUnicode()}")
+    for name in name_table.names:
+        if name.nameID == 1:
+            del name_table.names[name_table.names.index(name)]
     name_table.setName(new_name, 4, 3, 1, 0x409)
     name_table.setName(new_name, 1, 3, 1, 0x409)
     postscript_name = new_name.replace(' ', '')
     name_table.setName(postscript_name, 6, 3, 1, 0x409)
+
+    for name in name_table.names:
+        print(f"new name ID {name.nameID}: {name.toUnicode()}")
+
+
+
 
 def main():
     directory_path = "../../data/derge_font/svg"
@@ -101,9 +117,9 @@ def main():
     font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
     font = TTFont(font_path)
     replace_glyphs(font, glyphs)
-    modify_font_name(font, 'DergeFont')
-    font.save('../../data/derge_font/ttf/DergeFont.ttf')
+    modify_font_name(font, 'Derge')
+    font.save('../../data/derge_font/ttf/Derge.ttf')
+
 
 if __name__ == "__main__":
     main()
-
