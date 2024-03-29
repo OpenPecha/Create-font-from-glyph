@@ -20,23 +20,23 @@ logging.basicConfig(filename='skipped_glyph.log', filemode='w', format='%(name)s
 # get image path from url
 
 def download_image(image_url):
-    image_parts = (image_url.split("?")[0]).split("/")
-    obj_key = "/".join(image_parts[4:])
-    decoded_key = urllib.parse.unquote(obj_key)
-    image_name = decoded_key.split("/")[-1]
-    file_name, file_extension = os.path.splitext(image_name)
-    image_name_without_suffix = re.sub(r'(_\d+)$', '', file_name)
-    image_name_tibetan_only = re.sub(r'[^\u0F00-\u0FFF]', '', image_name_without_suffix)
+        image_parts = (image_url.split("?")[0]).split("/")
+        obj_key = "/".join(image_parts[4:])
+        decoded_key = urllib.parse.unquote(obj_key)
+        image_name = decoded_key.split("/")[-1]
+        file_name, file_extension = os.path.splitext(image_name)
+        image_name_without_suffix = re.sub(r'(_\d+)$', '', file_name)
+        image_name_tibetan_only = re.sub(r'[^\u0F00-\u0FFF]', '', image_name_without_suffix)
 
-    try:
-        response = s3.get_object(Bucket=bucket_name, Key=decoded_key)
-        image_data = response['Body'].read()
-        with open(fr"../../data/derge_font/downloaded_images/{image_name_tibetan_only}{file_extension}", 'wb') as f:
-            f.write(image_data)
+        try:
+            response = s3.get_object(Bucket=bucket_name, Key=decoded_key)
+            image_data = response['Body'].read()
+            with open(fr"../../data/derge_font/downloaded_images/{image_name_tibetan_only}{file_extension}", 'wb') as f:
+                f.write(image_data)
 
-    except Exception as e:
-        print(fr"Error while downloading {image_name} due to {e}")
-    return fr"../../data/derge_font/downloaded_images/{image_name_tibetan_only}{file_extension}"
+        except Exception as e:
+            print(fr"Error while downloading {image_name} due to {e}")
+        return fr"../../data/derge_font/downloaded_images/{image_name_tibetan_only}{file_extension}"
 
 # new image name
 

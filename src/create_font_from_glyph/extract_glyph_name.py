@@ -10,7 +10,7 @@ def check_tibetan_glyph_names(font_path):
         print(f"Error: {e}")
         return None
 
-font_path = "SambhotaDege.ttf"
+font_path = " "
 tibetan_glyph_names = check_tibetan_glyph_names(font_path)
 
 if tibetan_glyph_names is not None:
