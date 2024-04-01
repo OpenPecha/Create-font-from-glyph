@@ -138,30 +138,20 @@ def replace_glyphs_in_font(font_path, new_glyphs):
     glyfTable = font["glyf"]
 
     for glyph in new_glyphs:
-        # Create a new glyph object
         pen = TTGlyphPen(glyfTable)
-        glyph.draw(pen, glyfTable)  # Pass the glyfTable here
+        glyph.draw(pen, glyfTable) 
         new_glyph = pen.glyph()
 
-        # Add the new glyph to the font's 'glyf' table
-        font['glyf'][glyph.glyph_name] = new_glyph
 
-        # Update metrics
+        font['glyf'][glyph.glyph_name] = new_glyph
         font['hmtx'][glyph.glyph_name] = (glyph.advance_width, glyph.lsb)
 
-        # Add the new glyph to the font's 'cmap' table
         for table in font['cmap'].tables:
             for codepoint in glyph.codepoints:
                 table.cmap[codepoint] = glyph.glyph_name
 
-    # Save the new font
     font.save('../../data/derge_font/ttf/Derge.ttf')
 
-
-# Create new glyphs
-
-
-# Replace glyphs in the font
 
 
 def main():
