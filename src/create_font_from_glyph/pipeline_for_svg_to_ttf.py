@@ -2,6 +2,7 @@ from fontTools.ttLib.tables._g_l_y_f import Glyph as TTGlyph
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.svgLib import SVGPath
 from fontTools.ufoLib.glifLib import Glyph
+from fontTools.pens.basePen import BasePen
 import os
 from svg.path import parse_path
 from xml.dom.minidom import parse
@@ -27,6 +28,38 @@ def calculate_bounding_box_of_svg(svg_file_path):
 
 
 # parsing the svg path to write glyph from the path
+
+from fontTools.pens.basePen import BasePen
+
+class SVGPen(BasePen):
+    def __init__(self, glyphSet):
+        super().__init__(glyphSet)
+        self.currentPoint = (0, 0)
+        self.path = []
+
+    def _moveTo(self, pt):
+        self.currentPoint = pt
+        self.path.append(('moveTo', pt))
+
+    def _lineTo(self, pt):
+        self.currentPoint = pt
+        self.path.append(('lineTo', pt))
+
+    def _curveToOne(self, pt1, pt2, pt3):
+        control1 = (pt1[0], pt1[1])
+        control2 = (pt2[0], pt2[1])
+        end = (pt3[0], pt3[1])
+        self.path.append(('curveTo', control1, control2, end))
+        self.currentPoint = end
+
+    def curveTo(self, *points):
+        if len(points) == 3:
+            self._curveToOne(*points)
+        else:
+            super().curveTo(*points)
+
+    def get_path(self):
+        return self.path
 
 
 def parse_svg_to_glyph(svg_file_path, glyph_name=None, unicodes=None, glyph_set=None, advance_width=0, lsb=0, rsb=0, xMin=0, xMax=0, yMin=0, yMax=0):
