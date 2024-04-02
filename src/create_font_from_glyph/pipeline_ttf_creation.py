@@ -6,6 +6,7 @@ import os
 from fontTools.pens.basePen import BasePen
 from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
+from fontTools.pens.transformPen import TransformPen
 
 
 def extract_codepoints(filename):
@@ -26,6 +27,8 @@ class SVGPen(BasePen):
         self.path = []
 
     def _moveTo(self, pt):
+        if self.path and self.path[-1][0] != 'closePath':
+            self.closePath()
         self.currentPoint = pt
         self.path.append(('moveTo', pt))
 
@@ -38,6 +41,8 @@ class SVGPen(BasePen):
         self.path.append(('curveTo', (pt1, pt2, pt3)))
 
     def get_path(self):
+        if self.path and self.path[-1][0] != 'closePath':
+            self.closePath()
         return self.path
 
     def reset(self):
@@ -58,8 +63,8 @@ class SVGPen(BasePen):
                                  (segment.end.real, segment.end.imag))
             elif segment.__class__.__name__ == 'Move':
                 self._moveTo((segment.end.real, segment.end.imag))
-            if self.path and self.path[-1][0] != 'closePath':
-                self.closePath()
+        if self.path and self.path[-1][0] != 'closePath':
+            self.closePath()
 
 
 def parse_svg_to_glyph(svg_file_path, glyph_name=None, unicode=None):
@@ -70,7 +75,7 @@ def parse_svg_to_glyph(svg_file_path, glyph_name=None, unicode=None):
 
     tree = ET.parse(svg_file_path)
     root = tree.getroot()
-
+    glyph = TTGlyph()
     for element in root.iter('{http://www.w3.org/2000/svg}path'):
         path_data = element.attrib.get('d', '')
         glyph = TTGlyph()
@@ -78,16 +83,18 @@ def parse_svg_to_glyph(svg_file_path, glyph_name=None, unicode=None):
         pen = SVGPen(None)
         pen.pathFromSVGPathData(path_data)
         ttPen = TTGlyphPen()
+        transform = (3.0, 0, 0, 3.0, 0, -500)
+        transformPen = TransformPen(ttPen, transform)
 
         for command in pen.get_path():
             if command[0] == 'moveTo':
-                ttPen.moveTo(command[1])
+                transformPen.moveTo(command[1])
             elif command[0] == 'lineTo':
-                ttPen.lineTo(command[1])
+                transformPen.lineTo(command[1])
             elif command[0] == 'curveTo':
-                ttPen.curveTo(*command[1])
+                transformPen.curveTo(*command[1])
             elif command[0] == 'closePath':
-                ttPen.closePath()
+                transformPen.closePath()
 
         glyph = ttPen.glyph()
 
@@ -97,13 +104,14 @@ def parse_svg_to_glyph(svg_file_path, glyph_name=None, unicode=None):
 
     return glyph, glyph_name
 
-def main():
-    svg_dir_path = '../../data/derge_font/svg'
-    old_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'  
-    new_font_path = '../../data/derge_font/ttf/derge.ttf' 
-    font = TTFont(old_font_path)  
 
-    glyph_count = 0  
+def main():
+    svg_dir_path = '../../data/test_batch/pecing'
+    old_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
+    new_font_path = '../../data/test_font/pecing/pecing.ttf'
+    font = TTFont(old_font_path)
+
+    glyph_count = 0
     for filename in os.listdir(svg_dir_path):
         if filename.endswith('.svg'):
             svg_file_path = os.path.join(svg_dir_path, filename)
@@ -111,11 +119,20 @@ def main():
 
             if glyph_name in font['glyf']:
                 font['glyf'][glyph_name] = glyph
-                glyph_count += 1 
+                original_advance_width, original_lsb = font['hmtx'][glyph_name]
+                new_advance_width = int(original_advance_width * 2)
+                font['hmtx'][glyph_name] = (new_advance_width, original_lsb)
+
+                glyph_count += 1
+
+    font['hhea'].ascent = 600
+    font['hhea'].descent = -150
+    font['hhea'].lineGap = 0
 
     font.save(new_font_path)
 
-    print(f"Number of glyphs replaced: {glyph_count}")  
+    print(f"Number of glyphs replaced: {glyph_count}")
+
 
 if __name__ == "__main__":
     main()

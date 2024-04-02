@@ -1,7 +1,7 @@
 from fontTools.ttLib import TTFont
 from fontTools.pens.boundsPen import BoundsPen
 
-font = TTFont('../../data/base_font/sambhotaUnicodeBaseShip.ttf')
+font = TTFont('../../data/base_font/MonlamTBslim.ttf')
 glyph_set = font.getGlyphSet()
 glyph_count = 0
 

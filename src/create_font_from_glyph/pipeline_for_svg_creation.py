@@ -155,7 +155,7 @@ def png_to_svg(cleaned_image_path, svg_output_path):
 
     
 def main():
-    jsonl_paths = list(Path("../../data/derge_annotations/glyph_ann_reviewed_batch6_ga").iterdir())
+    jsonl_paths = list(Path("../../data/derge_annotations/all batches").iterdir())
     processed_ids = set()
     for jsonl_path in jsonl_paths:
         try:
