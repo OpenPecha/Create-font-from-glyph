@@ -1,6 +1,3 @@
-
-
-
 from pathlib import Path
 from config import MONLAM_AI_OCR_BUCKET, monlam_ai_ocr_s3_client
 from PIL import Image, ImageDraw
@@ -13,36 +10,35 @@ import traceback
 import re
 import subprocess
 
-
 s3 = monlam_ai_ocr_s3_client
 bucket_name = MONLAM_AI_OCR_BUCKET
 
 logging.basicConfig(filename='skipped_glyph.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
 
-
-# get image path from url
+downloaded_images_dir = "../../data/shul_font/downloaded_images"
+cleaned_images_dir = "../../data/shul_font/cleaned_images"
+svg_dir = "../../data/shul_font/svg"
+jsonl_dir = "../../data/shul_annotations/all_shul_batches"
 
 def download_image(image_url):
-        image_parts = (image_url.split("?")[0]).split("/")
-        obj_key = "/".join(image_parts[4:])
-        decoded_key = urllib.parse.unquote(obj_key)
-        image_name = decoded_key.split("/")[-1]
-        file_name, file_extension = os.path.splitext(image_name)
-        image_name_without_suffix = re.sub(r'(_\d+)$', '', file_name)
-        image_name_tibetan_only = re.sub(r'[^\u0F00-\u0FFF]', '', image_name_without_suffix)
+    image_parts = (image_url.split("?")[0]).split("/")
+    obj_key = "/".join(image_parts[4:])
+    decoded_key = urllib.parse.unquote(obj_key)
+    image_name = decoded_key.split("/")[-1]
+    file_name, file_extension = os.path.splitext(image_name)
+    image_name_without_suffix = re.sub(r'(_\d+)$', '', file_name)
+    image_name_tibetan_only = re.sub(r'[^\u0F00-\u0FFF]', '', image_name_without_suffix)
 
-        try:
-            response = s3.get_object(Bucket=bucket_name, Key=decoded_key)
-            image_data = response['Body'].read()
-            with open(fr"../../data/derge_font/downloaded_images/{image_name_tibetan_only}{file_extension}", 'wb') as f:
-                f.write(image_data)
+    try:
+        response = s3.get_object(Bucket=bucket_name, Key=decoded_key)
+        image_data = response['Body'].read()
+        with open(os.path.join(downloaded_images_dir, f"{image_name_tibetan_only}{file_extension}"), 'wb') as f:
+            f.write(image_data)
+    except Exception as e:
+        print(f"Error while downloading {image_name}: {e}")
+    return os.path.join(downloaded_images_dir, f"{image_name_tibetan_only}{file_extension}")
 
-        except Exception as e:
-            print(fr"Error while downloading {image_name} due to {e}")
-        return fr"../../data/derge_font/downloaded_images/{image_name_tibetan_only}{file_extension}"
-
-# new image name
-
+# Define output image path
 def get_image_output_path(cleaned_image, image_name, output_path, headlines):
     headline_starts = headlines["headline_starts"]
     headline_ends = headlines["headline_ends"]
@@ -52,15 +48,11 @@ def get_image_output_path(cleaned_image, image_name, output_path, headlines):
     if left_edge is None:
         return None
 
-    # new image name (Unicode_(RE-LE)_(BS-LE)_(RE-BE).png)
     new_image_name = f"{glyph_name}_{int(right_edge - left_edge)}_{int(headline_starts - left_edge)}_{int(right_edge - headline_ends)}.png"
-    image_output_path = f"{output_path}/{new_image_name}"
-
+    image_output_path = os.path.join(output_path, new_image_name)
     return image_output_path
 
-
-# for left and right edges
-
+# Define edge calculation function
 def get_edges(cleaned_image):
     if cleaned_image.mode != '1':
         cleaned_image = cleaned_image.convert('1')
@@ -74,9 +66,7 @@ def get_edges(cleaned_image):
     right_edge = np.max(black_pixels[1]) + 1
     return left_edge, right_edge
 
-
-# for headlines
-
+# Define headlines calculation function
 def get_headlines(baselines_coord):
     min_x = min(coord[0] for coord in baselines_coord)
     max_x = max(coord[0] for coord in baselines_coord)
@@ -86,8 +76,7 @@ def get_headlines(baselines_coord):
     }
     return headlines
 
-# convert outside to white
-
+# Define PNG processing function
 def png_process(png_image_path, span, cleaned_image_path):
     baselines_coord = None
     polygon_points = None
@@ -108,7 +97,7 @@ def png_process(png_image_path, span, cleaned_image_path):
 
     headlines = get_headlines(baselines_coord)
     cleaned_image_path = get_image_output_path(
-        cleaned_image, png_image_path.split('/')[-1], cleaned_image_path, headlines)
+        cleaned_image, os.path.basename(png_image_path), cleaned_image_path, headlines)
 
     if cleaned_image_path is not None:
         cleaned_image = cleaned_image.convert("RGBA") 
@@ -125,26 +114,21 @@ def png_process(png_image_path, span, cleaned_image_path):
     else:
         return None
 
-
-# for finding bounding box
-    
+# Define bounding box calculation function
 def find_glyph_bbox(image):
     gray_image = image.convert('L')
     binary_image = gray_image.point(lambda p: p < 128 and 255)
     bbox = binary_image.getbbox()
     return bbox
 
-
-# convert png to svg
-
+# Define PNG to SVG conversion function
 def png_to_svg(cleaned_image_path, svg_output_path):
     image = Image.open(cleaned_image_path).convert('1')
     pbm_path = "temp.pbm"
     image.save(pbm_path)
     sanitized_filename = re.sub('[^A-Za-z0-9_.]+', '', Path(cleaned_image_path).stem)
 
-
-    temp_svg_output_path = Path(f"../../data/derge_font/svg/{sanitized_filename}.svg")
+    temp_svg_output_path = Path(f"{svg_dir}/{sanitized_filename}.svg")
 
     subprocess.run(["potrace", pbm_path, "-s", "--scale", "5.5", "-o", temp_svg_output_path])
     os.remove(pbm_path)
@@ -153,9 +137,8 @@ def png_to_svg(cleaned_image_path, svg_output_path):
         os.remove(svg_output_path)
     os.rename(temp_svg_output_path, svg_output_path)
 
-    
 def main():
-    jsonl_paths = list(Path("../../data/derge_annotations/all batches").iterdir())
+    jsonl_paths = list(Path(jsonl_dir).iterdir())
     processed_ids = set()
     for jsonl_path in jsonl_paths:
         try:
@@ -172,13 +155,13 @@ def main():
                             png_image_path = download_image(line["image"])
 
                             cleaned_image_path = png_process(
-                                png_image_path, image_span, Path("../../data/derge_font/cleaned_images"))
+                                png_image_path, image_span, cleaned_images_dir)
 
                             if cleaned_image_path is None:
                                 logging.info(f"Skipping {png_image_path}")
                                 continue
-                            filename = Path(cleaned_image_path).stem
-                            svg_output_path = Path(f"../../data/derge_font/svg/{filename}.svg")
+                            filename = os.path.basename(cleaned_image_path)
+                            svg_output_path = Path(f"{svg_dir}/{Path(filename).stem}.svg")
                             png_to_svg(cleaned_image_path, svg_output_path)
 
                         except Exception as e:
@@ -186,7 +169,6 @@ def main():
                             traceback.print_exc()
         except Exception as e:
             logging.error(f"Error processing {jsonl_path}: {e}")
-
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)

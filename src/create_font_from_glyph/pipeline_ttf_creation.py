@@ -67,24 +67,25 @@ class SVGPen(BasePen):
             self.closePath()
 
 
-def parse_svg_to_glyph(svg_file_path, glyph_name=None, unicode=None):
+def parse_svg_to_glyph(svg_file_path):
     filename = os.path.splitext(os.path.basename(svg_file_path))[0]
     codepoints = extract_codepoints(filename)
     glyph_name = generate_glyph_name(codepoints)
-    unicode = codepoints
+   
 
     tree = ET.parse(svg_file_path)
     root = tree.getroot()
+
     glyph = TTGlyph()
+    glyph.unicodes = codepoints or []
+    pen = SVGPen(None)
+    ttPen = TTGlyphPen()
+    transform = (3.0, 0, 0, 3.0, 0, -3144)
+    transformPen = TransformPen(ttPen, transform)
+
     for element in root.iter('{http://www.w3.org/2000/svg}path'):
         path_data = element.attrib.get('d', '')
-        glyph = TTGlyph()
-        glyph.unicodes = unicode or []
-        pen = SVGPen(None)
         pen.pathFromSVGPathData(path_data)
-        ttPen = TTGlyphPen()
-        transform = (3.0, 0, 0, 3.0, 0, -500)
-        transformPen = TransformPen(ttPen, transform)
 
         for command in pen.get_path():
             if command[0] == 'moveTo':
@@ -96,19 +97,21 @@ def parse_svg_to_glyph(svg_file_path, glyph_name=None, unicode=None):
             elif command[0] == 'closePath':
                 transformPen.closePath()
 
-        glyph = ttPen.glyph()
+        pen.reset()
+
+    glyph = ttPen.glyph()
 
     print(f"File Name: {filename}")
     print(f"Glyph Name: {glyph_name}")
-    print(f"Unicodes: {unicode}")
+    print(f"Unicodes: {codepoints}")
 
     return glyph, glyph_name
 
 
 def main():
-    svg_dir_path = '../../data/test_batch/pecing'
+    svg_dir_path = '../../data/derge_font/svg'
     old_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
-    new_font_path = '../../data/test_font/pecing/pecing.ttf'
+    new_font_path = '../../data/derge_font/ttf/Derge(sambhota).ttf'
     font = TTFont(old_font_path)
 
     glyph_count = 0
@@ -125,9 +128,6 @@ def main():
 
                 glyph_count += 1
 
-    font['hhea'].ascent = 600
-    font['hhea'].descent = -150
-    font['hhea'].lineGap = 0
 
     font.save(new_font_path)
 
