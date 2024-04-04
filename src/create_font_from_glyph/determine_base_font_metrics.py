@@ -14,25 +14,23 @@ def print_glyph_and_unicode_values(font_path):
         pen = BoundsPen(glyph_set)
 
         glyph.draw(pen)
-
         bounds = pen.bounds
         if bounds: 
             xMin, yMin, xMax, yMax = bounds
         else:
             xMin = yMin = xMax = yMax = 0
         right_side_bearing = advance_width - (xMax - xMin)
-        
         unicode_value = glyph_to_unicode.get(glyph_name)
 
         print(f"Glyph name: {glyph_name}")
-        print(f"Unicode value: {unicode_value}")
+        # print(f"Unicode value: {unicode_value}")
         print(f"Advance width: {advance_width}")
         print(f"Left Side Bearing (LSB): {left_side_bearing}")
-        print(f"Right Side Bearing (RSB): {right_side_bearing}")
-        print(f"xMin: {xMin}")
-        print(f"xMax: {xMax}")
-        print(f"yMin: {yMin}")
-        print(f"yMax: {yMax}")
-        print("\n")
+        # print(f"Right Side Bearing (RSB): {right_side_bearing}")
+        # print(f"xMin: {xMin}")
+        # print(f"xMax: {xMax}")
+        # print(f"yMin: {yMin}")
+        # print(f"yMax: {yMax}")
+  
 
-print_glyph_and_unicode_values('../../data/base_font/MonlamTBslim.ttf')
+print_glyph_and_unicode_values('../../data/derge_font/ttf/Derge(monlam).ttf')

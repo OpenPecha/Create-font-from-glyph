@@ -1,3 +1,4 @@
+from re import S
 from fontTools.ttLib.tables._g_l_y_f import Glyph as TTGlyph
 from fontTools.pens.basePen import BasePen
 from xml.etree import ElementTree as ET
@@ -6,6 +7,7 @@ import os
 from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.transformPen import TransformPen
+from calculate_svg_baseline import calculate_baseline
 
 
 def extract_codepoints(filename):
@@ -58,26 +60,59 @@ class SVGPen(BasePen):
             elif segment.__class__.__name__ == 'Move':
                 self._moveTo((segment.end.real, segment.end.imag))
         if self.path and self.path[-1][0] != 'closePath':
-            self.closePath()
+            self.closePath()    
+
+    def get_bbox(self):
+        if not self.path:
+            return None
+        x_coords = []
+        y_coords = []
+        for pt in self.path:
+            if pt[0] in ['moveTo', 'lineTo']:
+                x_coords.append(pt[1][0])
+                y_coords.append(pt[1][1])
+            elif pt[0] == 'curveTo':
+                for point in pt[1]:
+                    x_coords.append(point[0])
+                    y_coords.append(point[1])
+        return min(x_coords), min(y_coords), max(x_coords), max(y_coords)
 
 
-def parse_svg_to_glyph(svg_file_path):
+
+
+def parse_svg_to_glyph(svg_file_path,baseline_svg,desired_baseline):
     filename = os.path.splitext(os.path.basename(svg_file_path))[0]
     codepoints = extract_codepoints(filename)
 
     tree = ET.parse(svg_file_path)
     root = tree.getroot()
-
     glyph = TTGlyph()
     glyph.unicodes = codepoints or []
     pen = SVGPen(None)
     ttPen = TTGlyphPen()
-    transform = (3.0, 0, 0, 3.0, 0, -3144)
-    transformPen = TransformPen(ttPen, transform)
+
+    min_x, min_y, max_x, max_y = float('inf'), float('inf'), float('-inf'), float('-inf')
 
     for element in root.iter('{http://www.w3.org/2000/svg}path'):
         path_data = element.attrib.get('d', '')
         pen.pathFromSVGPathData(path_data)
+        bbox = pen.get_bbox()
+        pen.reset()
+
+        if bbox:
+            min_x = min(min_x, bbox[0])
+            min_y = min(min_y, bbox[1])
+            max_x = max(max_x, bbox[2])
+            max_y = max(max_y, bbox[3])
+
+    vertical_translation = desired_baseline - baseline_svg
+
+    for element in root.iter('{http://www.w3.org/2000/svg}path'):
+        path_data = element.attrib.get('d', '')
+        pen.pathFromSVGPathData(path_data)
+
+        transform = (3.0, 0, 0, 3.0, 0, vertical_translation)
+        transformPen = TransformPen(ttPen, transform)
 
         for command in pen.get_path():
             if command[0] == 'moveTo':
@@ -113,7 +148,9 @@ def replace_glyphs_in_font(font, svg_dir_path, font_name, family_name):
     for filename in os.listdir(svg_dir_path):
         if filename.endswith('.svg'):
             svg_file_path = os.path.join(svg_dir_path, filename)
-            glyph, unicode_values = parse_svg_to_glyph(svg_file_path)
+            baseline_svg = calculate_baseline(svg_file_path)
+            desired_baseline = -2000
+            glyph, unicode_values = parse_svg_to_glyph(svg_file_path,baseline_svg,desired_baseline)
             if len(unicode_values) == 1:
                 unicode_to_glyph[unicode_values[0]] = glyph
 
@@ -130,22 +167,24 @@ def replace_glyphs_in_font(font, svg_dir_path, font_name, family_name):
                 new_glyph = unicode_to_glyph[unicode_value]
                 font['glyf'][glyph_name] = new_glyph
                 original_advance_width, original_lsb = font['hmtx'][glyph_name]
-                new_advance_width = int(original_advance_width * 2)
-                font['hmtx'][glyph_name] = (new_advance_width, original_lsb)
+                new_advance_width = int(original_advance_width)
+                new_lsb = int(original_lsb)
+                font['hmtx'][glyph_name] = (new_advance_width, new_lsb)
                 glyph_count += 1
 
     set_font_metadata(font, font_name, family_name)
+
     return glyph_count
 
 
 def main():
-    svg_dir_path = '../../data/shul_font/svg'
+    svg_dir_path = '../../data/derge_font/svg'
     old_font_path = '../../data/base_font/MonlamTBslim.ttf'
-    new_font_path = '../../data/shul_font/ttf/Shul(monlam).ttf'
+    new_font_path = '../../data/derge_font/ttf/Derge(monlam).ttf'
     font = TTFont(old_font_path)
-    font_name = "Shul(monlam)"
-    family_name = "Shul(monlam)Regular"
-    glyph_count = replace_glyphs_in_font(font, svg_dir_path,font_name, family_name)
+    font_name = "DergeMonlam"
+    family_name = "DergeMonlam-Regular"
+    glyph_count = replace_glyphs_in_font(font, svg_dir_path, font_name, family_name)
 
     font.save(new_font_path)
     print(f"Total glyphs replaced: {glyph_count}")
