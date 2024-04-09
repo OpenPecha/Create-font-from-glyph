@@ -12,6 +12,7 @@ def get_baseline_alignment(font_path):
     baseline_alignment = ascender - descender
 
     return baseline_alignment
+
 font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
 baseline_alignment = get_baseline_alignment(font_path)
 print(f"Baseline Alignment: {baseline_alignment}")
