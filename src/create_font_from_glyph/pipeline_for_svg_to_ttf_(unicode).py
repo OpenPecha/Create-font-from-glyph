@@ -7,7 +7,7 @@ import os
 from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.transformPen import TransformPen
-from calculate_svg_baseline import calculate_baseline
+from calculate_svg_headline import calculate_headline
 
 
 def extract_codepoints(filename):
@@ -78,9 +78,7 @@ class SVGPen(BasePen):
         return min(x_coords), min(y_coords), max(x_coords), max(y_coords)
 
 
-
-
-def parse_svg_to_glyph(svg_file_path,baseline_svg,desired_baseline):
+def parse_svg_to_glyph(svg_file_path,headline_svg,desired_headline):
     filename = os.path.splitext(os.path.basename(svg_file_path))[0]
     codepoints = extract_codepoints(filename)
 
@@ -105,7 +103,7 @@ def parse_svg_to_glyph(svg_file_path,baseline_svg,desired_baseline):
             max_x = max(max_x, bbox[2])
             max_y = max(max_y, bbox[3])
 
-    vertical_translation = desired_baseline - baseline_svg
+    vertical_translation = desired_headline - headline_svg
 
     for element in root.iter('{http://www.w3.org/2000/svg}path'):
         path_data = element.attrib.get('d', '')
@@ -143,14 +141,14 @@ def set_font_metadata(font, font_name, family_name):
             name_record.string = font_name.encode('utf-16-be')
 
 
-def replace_glyphs_in_font(font, svg_dir_path, font_name, family_name):
+def replace_glyphs_in_font(   font, svg_dir_path, font_name, family_name):
     unicode_to_glyph = {}
     for filename in os.listdir(svg_dir_path):
         if filename.endswith('.svg'):
             svg_file_path = os.path.join(svg_dir_path, filename)
-            baseline_svg = calculate_baseline(svg_file_path)
-            desired_baseline = -2000
-            glyph, unicode_values = parse_svg_to_glyph(svg_file_path,baseline_svg,desired_baseline)
+            headline_svg = calculate_headline(svg_file_path)
+            desired_headline = -2000
+            glyph, unicode_values = parse_svg_to_glyph(svg_file_path,headline_svg,desired_headline)
             if len(unicode_values) == 1:
                 unicode_to_glyph[unicode_values[0]] = glyph
 
