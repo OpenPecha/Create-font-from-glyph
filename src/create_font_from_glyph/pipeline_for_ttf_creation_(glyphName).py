@@ -151,9 +151,9 @@ def set_font_metadata(font, font_name, family_name):
 
 
 def main():
-    svg_dir_path = '../../data/derge_font/svg'
+    svg_dir_path = '../../data/pecing_font/svg'
     old_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
-    new_font_path = '../../data/derge_font/ttf/Derge(sambhota).ttf'
+    new_font_path = '../../data/pecing_font/ttf/PecingSambhota.ttf'
     font = TTFont(old_font_path)
 
     glyph_count = 0
@@ -167,13 +167,13 @@ def main():
             if glyph_name in font['glyf']:
                 font['glyf'][glyph_name] = glyph
                 original_advance_width, original_lsb = font['hmtx'][glyph_name]
-                new_advance_width = max(0, int(original_advance_width) - 100)
+                new_advance_width = max(0, int(original_advance_width))
                 font['hmtx'][glyph_name] = (new_advance_width, original_lsb)
 
                 glyph_count += 1
 
-    font_name = "DergeSambhota"
-    family_name = "DergeSambhota-Regular"
+    font_name = "PecingSambhota"
+    family_name = "PecingSambhota-Regular"
     set_font_metadata(font, font_name, family_name)
 
     font.save(new_font_path)

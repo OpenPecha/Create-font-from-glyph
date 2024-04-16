@@ -15,10 +15,10 @@ bucket_name = MONLAM_AI_OCR_BUCKET
 
 logging.basicConfig(filename='skipped_glyph.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
 
-downloaded_images_dir = "../../data/shul_font/downloaded_images"
-cleaned_images_dir = "../../data/shul_font/cleaned_images"
-svg_dir = "../../data/shul_font/svg"
-jsonl_dir = "../../data/shul_annotations/all_shul_batches"
+downloaded_images_dir = "../../data/test_derge_batch1_10_glyphs/downloaded_images"
+cleaned_images_dir = "../../data/test_derge_batch1_10_glyphs/cleaned_images"
+svg_dir = "../../data/test_derge_batch1_10_glyphs/svg"
+jsonl_dir = "../../data/derge_annotations/glyph_ann_reviewed_batch6_ga"
 
 def download_image(image_url):
     image_parts = (image_url.split("?")[0]).split("/")
@@ -139,7 +139,7 @@ def png_to_svg(cleaned_image_path, svg_output_path):
 
 def main():
     jsonl_paths = list(Path(jsonl_dir).iterdir())
-    processed_ids = set()
+    processed_ids = {}
     for jsonl_path in jsonl_paths:
         try:
             with jsonlines.open(jsonl_path) as reader:
@@ -148,9 +148,13 @@ def main():
                         try:
                             image_id = line["id"].split("_")[0]
                             if image_id in processed_ids:
-                                logging.info(f"Skipping duplicate ID: {image_id}")
-                                continue
-                            processed_ids.add(image_id)
+                                if processed_ids[image_id] >= 10:
+                                    logging.info(f"Skipping duplicate ID: {image_id}")
+                                    continue
+                                else:
+                                    processed_ids[image_id] += 1
+                            else:
+                                processed_ids[image_id] = 1
                             image_span = line["spans"]
                             png_image_path = download_image(line["image"])
 
@@ -173,3 +177,4 @@ def main():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     main()
+
