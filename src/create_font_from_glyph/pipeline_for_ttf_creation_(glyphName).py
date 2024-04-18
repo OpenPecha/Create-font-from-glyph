@@ -7,8 +7,8 @@ from fontTools.pens.basePen import BasePen
 from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.transformPen import TransformPen
-# from calculate_svg_headline import calculate_headline
-
+from fontTools.feaLib.builder import addOpenTypeFeatures
+import tempfile
 
 def extract_codepoints(filename):
     tibetan_char = filename.split('_')[0]
@@ -111,7 +111,6 @@ def parse_svg_to_glyph(svg_file_path, desired_headline):
             max_x = max(max_x, bbox[2])
             max_y = max(max_y, bbox[3])
 
-   
     vertical_translation = desired_headline - max_y
 
     for element in root.iter('{http://www.w3.org/2000/svg}path'):
@@ -140,6 +139,12 @@ def parse_svg_to_glyph(svg_file_path, desired_headline):
 
     return glyph, glyph_name
 
+def add_glyph_variant(font, glyph_name, variant_glyph, variant_index):
+    variant_name = f"{glyph_name}.alt{variant_index}"
+    font['glyf'][variant_name] = variant_glyph
+    if glyph_name in font['hmtx']:
+        original_advance_width, original_lsb = font['hmtx'][glyph_name]
+        font['hmtx'][variant_name] = (original_advance_width, original_lsb)
 
 def set_font_metadata(font, font_name, family_name):
     name_table = font['name']
@@ -149,37 +154,56 @@ def set_font_metadata(font, font_name, family_name):
         elif name_record.nameID == 4:
             name_record.string = font_name.encode('utf-16-be')
 
-
 def main():
-    svg_dir_path = '../../data/pecing_font/svg'
-    old_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
-    new_font_path = '../../data/pecing_font/ttf/PecingSambhota.ttf'
-    font = TTFont(old_font_path)
+    svg_dir_path = '../../data/derge_font/Derge_test_ten_glyphs/svg'
+    existing_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
+    new_font_path = '../../data/derge_font/Derge_test_ten_glyphs/ttf/DergeVariants.ttf'
+    font = TTFont(existing_font_path)
+    standard_glyphs = []
+    alternate_glyphs = []
+    glyph_names = {}
 
-    glyph_count = 0
     for filename in os.listdir(svg_dir_path):
         if filename.endswith('.svg'):
             svg_file_path = os.path.join(svg_dir_path, filename)
-            # headline_svg = calculate_headline(svg_file_path)
             desired_headline = -2000
             glyph, glyph_name = parse_svg_to_glyph(svg_file_path, desired_headline)
 
-            if glyph_name in font['glyf']:
-                font['glyf'][glyph_name] = glyph
-                original_advance_width, original_lsb = font['hmtx'][glyph_name]
-                new_advance_width = max(0, int(original_advance_width))
-                font['hmtx'][glyph_name] = (new_advance_width, original_lsb)
+            if glyph_name in glyph_names:
+                glyph_names[glyph_name] += 1
+                add_glyph_variant(font, glyph_name, glyph, glyph_names[glyph_name])
+                alternate_glyphs.append(f"{glyph_name}.alt{glyph_names[glyph_name]}")
+            else:
+                glyph_names[glyph_name] = 0
+                if glyph_name in font['hmtx']:
+                    font['glyf'][glyph_name] = glyph
+                    original_advance_width, original_lsb = font['hmtx'][glyph_name]
+                    font['hmtx'][glyph_name] = (original_advance_width, original_lsb)
+                    standard_glyphs.append(glyph_name)
 
-                glyph_count += 1
+    if standard_glyphs:
+        feature = f"""
+        feature calt {{
+            sub @standard @standard' by @alternates;
+        }} calt;
 
-    font_name = "PecingSambhota"
-    family_name = "PecingSambhota-Regular"
+        @standard = [{' '.join(standard_glyphs)}]; 
+        @alternates = [{' '.join(alternate_glyphs)}]; 
+        """
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".fea") as temp:
+            temp.write(feature.encode())
+            temp_path = temp.name
+
+        addOpenTypeFeatures(font, temp_path)
+        os.remove(temp_path)
+
+    font_name = "DergeVariants"
+    family_name = "DergeVariants-Regular"
     set_font_metadata(font, font_name, family_name)
 
     font.save(new_font_path)
 
-    print(f"Number of glyphs replaced: {glyph_count}")
-
+    print(f"glyphs replaced: {len(standard_glyphs)}")
 
 if __name__ == "__main__":
     main()

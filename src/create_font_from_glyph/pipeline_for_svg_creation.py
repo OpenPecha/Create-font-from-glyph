@@ -15,10 +15,10 @@ bucket_name = MONLAM_AI_OCR_BUCKET
 
 logging.basicConfig(filename='skipped_glyph.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
 
-downloaded_images_dir = "../../data/test_derge_batch1_10_glyphs/downloaded_images"
-cleaned_images_dir = "../../data/test_derge_batch1_10_glyphs/cleaned_images"
-svg_dir = "../../data/test_derge_batch1_10_glyphs/svg"
-jsonl_dir = "../../data/derge_annotations/glyph_ann_reviewed_batch6_ga"
+downloaded_images_dir = "../../data/pecing_font/Pecing_test_10_glyphs/downloaded_images"
+cleaned_images_dir = "../../data/pecing_font/Pecing_test_10_glyphs/cleaned_images"
+svg_dir = "../../data/pecing_font/Pecing_test_10_glyphs/svg"
+jsonl_dir = "../../data/pecing_annotations/all_pecing_batches"
 
 def download_image(image_url):
     image_parts = (image_url.split("?")[0]).split("/")
