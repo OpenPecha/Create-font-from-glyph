@@ -8,7 +8,8 @@ from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.feaLib.builder import addOpenTypeFeatures
-import tempfile
+
+
 
 def extract_codepoints(filename):
     tibetan_char = filename.split('_')[0]
@@ -111,6 +112,7 @@ def parse_svg_to_glyph(svg_file_path, desired_headline):
             max_x = max(max_x, bbox[2])
             max_y = max(max_y, bbox[3])
 
+   
     vertical_translation = desired_headline - max_y
 
     for element in root.iter('{http://www.w3.org/2000/svg}path'):
@@ -139,12 +141,6 @@ def parse_svg_to_glyph(svg_file_path, desired_headline):
 
     return glyph, glyph_name
 
-def add_glyph_variant(font, glyph_name, variant_glyph, variant_index):
-    variant_name = f"{glyph_name}.alt{variant_index}"
-    font['glyf'][variant_name] = variant_glyph
-    if glyph_name in font['hmtx']:
-        original_advance_width, original_lsb = font['hmtx'][glyph_name]
-        font['hmtx'][variant_name] = (original_advance_width, original_lsb)
 
 def set_font_metadata(font, font_name, family_name):
     name_table = font['name']
@@ -156,12 +152,12 @@ def set_font_metadata(font, font_name, family_name):
 
 def main():
     svg_dir_path = '../../data/derge_font/Derge_test_ten_glyphs/svg'
-    existing_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
-    new_font_path = '../../data/derge_font/Derge_test_ten_glyphs/ttf/DergeVariants.ttf'
-    font = TTFont(existing_font_path)
-    standard_glyphs = []
-    alternate_glyphs = []
-    glyph_names = {}
+    old_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
+    new_font_path = '../../data/derge_font/Derge_test_ten_glyphs/ttf/DergeVariant.ttf'
+    font = TTFont(old_font_path)
+
+    glyph_count = 0
+    alternate_glyphs = {}
 
     for filename in os.listdir(svg_dir_path):
         if filename.endswith('.svg'):
@@ -169,41 +165,52 @@ def main():
             desired_headline = -2000
             glyph, glyph_name = parse_svg_to_glyph(svg_file_path, desired_headline)
 
-            if glyph_name in glyph_names:
-                glyph_names[glyph_name] += 1
-                add_glyph_variant(font, glyph_name, glyph, glyph_names[glyph_name])
-                alternate_glyphs.append(f"{glyph_name}.alt{glyph_names[glyph_name]}")
+            if glyph_name in font['glyf']:
+                if glyph_name not in alternate_glyphs:
+                    alternate_glyphs[glyph_name] = []
+                alternate_glyphs[glyph_name].append(glyph)
+            elif glyph_name not in font['glyf']:
+                print(f"skipping glyph {glyph_name} ")
+                continue  
             else:
-                glyph_names[glyph_name] = 0
-                if glyph_name in font['hmtx']:
-                    font['glyf'][glyph_name] = glyph
-                    original_advance_width, original_lsb = font['hmtx'][glyph_name]
-                    font['hmtx'][glyph_name] = (original_advance_width, original_lsb)
-                    standard_glyphs.append(glyph_name)
+                font['glyf'][glyph_name] = glyph
+                original_advance_width, original_lsb = font['hmtx'][glyph_name]
+                new_advance_width = max(0, int(original_advance_width))
+                font['hmtx'][glyph_name] = (new_advance_width, original_lsb)
 
-    if standard_glyphs:
-        feature = f"""
-        feature calt {{
-            sub @standard @standard' by @alternates;
-        }} calt;
+                glyph_count += 1
 
-        @standard = [{' '.join(standard_glyphs)}]; 
-        @alternates = [{' '.join(alternate_glyphs)}]; 
-        """
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".fea") as temp:
-            temp.write(feature.encode())
-            temp_path = temp.name
+    for glyph_name, glyphs in alternate_glyphs.items():
+        for i, glyph in enumerate(glyphs):
+            alternate_glyph_name = f"{glyph_name}.alt{i+1}"
+            font['glyf'][alternate_glyph_name] = glyph
+            original_advance_width, original_lsb = font['hmtx'][glyph_name]
+            new_advance_width = max(0, int(original_advance_width))
+            font['hmtx'][alternate_glyph_name] = (new_advance_width, original_lsb)
 
-        addOpenTypeFeatures(font, temp_path)
-        os.remove(temp_path)
+            glyph_count += 1
 
-    font_name = "DergeVariants"
-    family_name = "DergeVariants-Regular"
+    font_name = "DergeVariant"
+    family_name = "DergeVariant-Regular"
     set_font_metadata(font, font_name, family_name)
+
+#    calt feature definition
+    feature_file_content = "feature calt {\n"
+    for glyph_name, glyphs in alternate_glyphs.items():
+        for i, glyph in enumerate(glyphs):
+            alternate_glyph_name = f"{glyph_name}.alt{i+1}"
+            feature_file_content += f"    sub {glyph_name}' by {alternate_glyph_name};\n"
+    feature_file_content += "} calt;"
+
+    with open("features.fea", "w") as f:
+        f.write(feature_file_content)
+
+    addOpenTypeFeatures(font, "features.fea")
 
     font.save(new_font_path)
 
-    print(f"glyphs replaced: {len(standard_glyphs)}")
+    print(f"Number of glyphs replaced: {glyph_count}")
+
 
 if __name__ == "__main__":
     main()
