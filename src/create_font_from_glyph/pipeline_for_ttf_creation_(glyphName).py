@@ -10,7 +10,6 @@ from fontTools.pens.transformPen import TransformPen
 from fontTools.feaLib.builder import addOpenTypeFeatures
 
 
-
 def extract_codepoints(filename):
     tibetan_char = filename.split('_')[0]
     codepoints = [ord(char) for char in tibetan_char]
@@ -112,7 +111,6 @@ def parse_svg_to_glyph(svg_file_path, desired_headline):
             max_x = max(max_x, bbox[2])
             max_y = max(max_y, bbox[3])
 
-   
     vertical_translation = desired_headline - max_y
 
     for element in root.iter('{http://www.w3.org/2000/svg}path'):
@@ -150,6 +148,7 @@ def set_font_metadata(font, font_name, family_name):
         elif name_record.nameID == 4:
             name_record.string = font_name.encode('utf-16-be')
 
+
 def main():
     svg_dir_path = '../../data/derge_font/Derge_test_ten_glyphs/svg'
     old_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
@@ -170,19 +169,17 @@ def main():
                     alternate_glyphs[glyph_name] = []
                 alternate_glyphs[glyph_name].append(glyph)
             elif glyph_name not in font['glyf']:
-                print(f"skipping glyph {glyph_name} ")
-                continue  
-            else:
-                font['glyf'][glyph_name] = glyph
-                original_advance_width, original_lsb = font['hmtx'][glyph_name]
-                new_advance_width = max(0, int(original_advance_width))
-                font['hmtx'][glyph_name] = (new_advance_width, original_lsb)
-
-                glyph_count += 1
+                print(f"skipping glyph {glyph_name}")
+                continue
 
     for glyph_name, glyphs in alternate_glyphs.items():
-        for i, glyph in enumerate(glyphs):
-            alternate_glyph_name = f"{glyph_name}.alt{i+1}"
+        font['glyf'][glyph_name] = glyphs[0]
+        original_advance_width, original_lsb = font['hmtx'][glyph_name]
+        new_advance_width = max(0, int(original_advance_width))
+        font['hmtx'][glyph_name] = (new_advance_width, original_lsb)
+        glyph_count += 1
+        for i, glyph in enumerate(glyphs[1:], start=1):
+            alternate_glyph_name = f"{glyph_name}.alt{i}"
             font['glyf'][alternate_glyph_name] = glyph
             original_advance_width, original_lsb = font['hmtx'][glyph_name]
             new_advance_width = max(0, int(original_advance_width))
@@ -194,11 +191,11 @@ def main():
     family_name = "DergeVariant-Regular"
     set_font_metadata(font, font_name, family_name)
 
-#    calt feature definition
+    # calt feature definition
     feature_file_content = "feature calt {\n"
     for glyph_name, glyphs in alternate_glyphs.items():
-        for i, glyph in enumerate(glyphs):
-            alternate_glyph_name = f"{glyph_name}.alt{i+1}"
+        for i, glyph in enumerate(glyphs[1:], start=1):
+            alternate_glyph_name = f"{glyph_name}.alt{i}"
             feature_file_content += f"    sub {glyph_name}' by {alternate_glyph_name};\n"
     feature_file_content += "} calt;"
 
