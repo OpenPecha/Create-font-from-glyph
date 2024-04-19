@@ -8,6 +8,8 @@ from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.feaLib.builder import addOpenTypeFeatures
+from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
+from fontTools.ttLib import newTable
 
 
 def extract_codepoints(filename):
@@ -149,11 +151,23 @@ def set_font_metadata(font, font_name, family_name):
             name_record.string = font_name.encode('utf-16-be')
 
 
+
 def main():
     svg_dir_path = '../../data/derge_font/Derge_test_ten_glyphs/svg'
-    old_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
+    base_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
     new_font_path = '../../data/derge_font/Derge_test_ten_glyphs/ttf/DergeVariant.ttf'
-    font = TTFont(old_font_path)
+    font = TTFont(base_font_path)
+
+# writing the calt feature rule to simulate randomness is overriding the already present rule in the existing font for ligature substitution
+# this line of code will decomplies the feature into sting and append the new rules to the string
+# this approach is not working properly, need another approach
+
+    if "GSUB" in font:
+        gsub = font["GSUB"].table
+        gsub.decompile()
+        original_feature_file_content = gsub.toXML()
+    else:
+        original_feature_file_content = ""
 
     glyph_count = 0
     alternate_glyphs = {}
@@ -192,11 +206,17 @@ def main():
     set_font_metadata(font, font_name, family_name)
 
     # calt feature definition
-    feature_file_content = "feature calt {\n"
+    feature_file_content = original_feature_file_content + "\nfeature calt {\n"
     for glyph_name, glyphs in alternate_glyphs.items():
         for i, glyph in enumerate(glyphs[1:], start=1):
             alternate_glyph_name = f"{glyph_name}.alt{i}"
-            feature_file_content += f"    sub {glyph_name}' by {alternate_glyph_name};\n"
+
+            for j in range(i):
+                if j > 0:
+                    rule = "    sub " + glyph_name + "'" + " ".join([glyph_name]*j) + " by " + alternate_glyph_name + ";\n"
+                else:
+                    rule = f"    sub {glyph_name}' by {alternate_glyph_name};\n"
+            feature_file_content += rule
     feature_file_content += "} calt;"
 
     with open("features.fea", "w") as f:
