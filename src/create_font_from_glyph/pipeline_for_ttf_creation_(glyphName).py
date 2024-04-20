@@ -7,7 +7,9 @@ from fontTools.pens.basePen import BasePen
 from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.transformPen import TransformPen
-# from calculate_svg_headline import calculate_headline
+from fontTools.feaLib.builder import addOpenTypeFeatures
+from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
+from fontTools.ttLib import newTable
 
 
 def extract_codepoints(filename):
@@ -111,7 +113,6 @@ def parse_svg_to_glyph(svg_file_path, desired_headline):
             max_x = max(max_x, bbox[2])
             max_y = max(max_y, bbox[3])
 
-   
     vertical_translation = desired_headline - max_y
 
     for element in root.iter('{http://www.w3.org/2000/svg}path'):
@@ -150,31 +151,78 @@ def set_font_metadata(font, font_name, family_name):
             name_record.string = font_name.encode('utf-16-be')
 
 
+
 def main():
-    svg_dir_path = '../../data/pecing_font/svg'
-    old_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
-    new_font_path = '../../data/pecing_font/ttf/PecingSambhota.ttf'
-    font = TTFont(old_font_path)
+    svg_dir_path = '../../data/derge_font/Derge_test_ten_glyphs/svg'
+    base_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
+    new_font_path = '../../data/derge_font/Derge_test_ten_glyphs/ttf/DergeVariant.ttf'
+    font = TTFont(base_font_path)
+
+# writing the calt feature rule to simulate randomness is overriding the already present rule in the existing font for ligature substitution
+# this line of code will decomplies the feature into sting and append the new rules to the string
+# this approach is not working properly, need another approach
+
+    if "GSUB" in font:
+        gsub = font["GSUB"].table
+        gsub.decompile()
+        original_feature_file_content = gsub.toXML()
+    else:
+        original_feature_file_content = ""
 
     glyph_count = 0
+    alternate_glyphs = {}
+
     for filename in os.listdir(svg_dir_path):
         if filename.endswith('.svg'):
             svg_file_path = os.path.join(svg_dir_path, filename)
-            # headline_svg = calculate_headline(svg_file_path)
             desired_headline = -2000
             glyph, glyph_name = parse_svg_to_glyph(svg_file_path, desired_headline)
 
             if glyph_name in font['glyf']:
-                font['glyf'][glyph_name] = glyph
-                original_advance_width, original_lsb = font['hmtx'][glyph_name]
-                new_advance_width = max(0, int(original_advance_width))
-                font['hmtx'][glyph_name] = (new_advance_width, original_lsb)
+                if glyph_name not in alternate_glyphs:
+                    alternate_glyphs[glyph_name] = []
+                alternate_glyphs[glyph_name].append(glyph)
+            elif glyph_name not in font['glyf']:
+                print(f"skipping glyph {glyph_name}")
+                continue
 
-                glyph_count += 1
+    for glyph_name, glyphs in alternate_glyphs.items():
+        font['glyf'][glyph_name] = glyphs[0]
+        original_advance_width, original_lsb = font['hmtx'][glyph_name]
+        new_advance_width = max(0, int(original_advance_width))
+        font['hmtx'][glyph_name] = (new_advance_width, original_lsb)
+        glyph_count += 1
+        for i, glyph in enumerate(glyphs[1:], start=1):
+            alternate_glyph_name = f"{glyph_name}.alt{i}"
+            font['glyf'][alternate_glyph_name] = glyph
+            original_advance_width, original_lsb = font['hmtx'][glyph_name]
+            new_advance_width = max(0, int(original_advance_width))
+            font['hmtx'][alternate_glyph_name] = (new_advance_width, original_lsb)
 
-    font_name = "PecingSambhota"
-    family_name = "PecingSambhota-Regular"
+            glyph_count += 1
+
+    font_name = "DergeVariant"
+    family_name = "DergeVariant-Regular"
     set_font_metadata(font, font_name, family_name)
+
+    # calt feature definition
+    feature_file_content = original_feature_file_content + "\nfeature calt {\n"
+    for glyph_name, glyphs in alternate_glyphs.items():
+        for i, glyph in enumerate(glyphs[1:], start=1):
+            alternate_glyph_name = f"{glyph_name}.alt{i}"
+
+            for j in range(i):
+                if j > 0:
+                    rule = "    sub " + glyph_name + "'" + " ".join([glyph_name]*j) + " by " + alternate_glyph_name + ";\n"
+                else:
+                    rule = f"    sub {glyph_name}' by {alternate_glyph_name};\n"
+            feature_file_content += rule
+    feature_file_content += "} calt;"
+
+    with open("features.fea", "w") as f:
+        f.write(feature_file_content)
+
+    addOpenTypeFeatures(font, "features.fea")
 
     font.save(new_font_path)
 
