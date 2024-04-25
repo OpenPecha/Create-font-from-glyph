@@ -8,9 +8,7 @@ from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.feaLib.builder import addOpenTypeFeatures
-from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
-from fontTools.ttLib import newTable
-from fontTools.ttLib.tables import otTables
+
 
 
 def extract_codepoints(filename):
@@ -180,14 +178,14 @@ def main():
     for glyph_name, glyphs in alternate_glyphs.items():
         font['glyf'][glyph_name] = glyphs[0]
         original_advance_width, original_lsb = font['hmtx'][glyph_name]
-        new_advance_width = max(0, int(original_advance_width))
+        new_advance_width = max(0, int(original_advance_width)-100)
         font['hmtx'][glyph_name] = (new_advance_width, original_lsb)
         glyph_count += 1
         for i, glyph in enumerate(glyphs[1:], start=1):
             alternate_glyph_name = f"{glyph_name}.calt{i}"
             font['glyf'][alternate_glyph_name] = glyph
             original_advance_width, original_lsb = font['hmtx'][glyph_name]
-            new_advance_width = max(0, int(original_advance_width)-200)
+            new_advance_width = max(0, int(original_advance_width)-100)
             font['hmtx'][alternate_glyph_name] = (new_advance_width, original_lsb)
 
             alt_glyph_count += 1
@@ -197,22 +195,23 @@ def main():
 
     font_name = "DergeVariant"
     family_name = "DergeVariant-Regular"
+
     set_font_metadata(font, font_name, family_name)
 
     feature_file_content = "feature calt {\n"
+
+    all_glyphs = [glyph_name for glyph_name in alternate_glyphs.keys()]
+    all_glyphs += [f"{glyph_name}.calt{i}" for glyph_name in alternate_glyphs.keys() for i in range(1, len(alternate_glyphs[glyph_name]))]
+    feature_file_content += "@all_glyphs = [" + " ".join(all_glyphs) + "];\n"
+
     for glyph_name, glyphs in alternate_glyphs.items():
-       for i, glyph in enumerate(glyphs[1:], start=1):
-        alternate_glyph_name = f"{glyph_name}.calt{i}"
-        
-        for j in range(i):
-            if j > 0:
-                rule = "    sub " + glyph_name + "'" + " ".join([glyph_name]*j) + " by " + alternate_glyph_name + ";\n"
-            else:
-                rule = f"    sub {glyph_name}' by {alternate_glyph_name};\n"
-        feature_file_content += rule
+        for i, glyph in enumerate(glyphs[1:], start=1):
+            alternate_glyph_name = f"{glyph_name}.calt{i}"
+
+            rule = f"    sub @all_glyphs {glyph_name}' @all_glyphs by {alternate_glyph_name};\n"
+            feature_file_content += rule
+
     feature_file_content += "} calt;"
-
-
 
     with open("features.fea", "w") as f:
         f.write(feature_file_content)
