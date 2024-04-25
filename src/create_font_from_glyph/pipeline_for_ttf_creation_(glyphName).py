@@ -10,6 +10,7 @@ from fontTools.pens.transformPen import TransformPen
 from fontTools.feaLib.builder import addOpenTypeFeatures
 from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
 from fontTools.ttLib import newTable
+from fontTools.ttLib.tables import otTables
 
 
 def extract_codepoints(filename):
@@ -158,18 +159,8 @@ def main():
     new_font_path = '../../data/derge_font/Derge_test_ten_glyphs/ttf/DergeVariant.ttf'
     font = TTFont(base_font_path)
 
-# writing the calt feature rule to simulate randomness is overriding the already present rule in the existing font for ligature substitution
-# this line of code will decomplies the feature into sting and append the new rules to the string
-# this approach is not working properly, need another approach
-
-    if "GSUB" in font:
-        gsub = font["GSUB"].table
-        gsub.decompile()
-        original_feature_file_content = gsub.toXML()
-    else:
-        original_feature_file_content = ""
-
     glyph_count = 0
+    alt_glyph_count = 0
     alternate_glyphs = {}
 
     for filename in os.listdir(svg_dir_path):
@@ -193,31 +184,35 @@ def main():
         font['hmtx'][glyph_name] = (new_advance_width, original_lsb)
         glyph_count += 1
         for i, glyph in enumerate(glyphs[1:], start=1):
-            alternate_glyph_name = f"{glyph_name}.alt{i}"
+            alternate_glyph_name = f"{glyph_name}.calt{i}"
             font['glyf'][alternate_glyph_name] = glyph
             original_advance_width, original_lsb = font['hmtx'][glyph_name]
-            new_advance_width = max(0, int(original_advance_width))
+            new_advance_width = max(0, int(original_advance_width)-200)
             font['hmtx'][alternate_glyph_name] = (new_advance_width, original_lsb)
 
-            glyph_count += 1
+            alt_glyph_count += 1
+
+    print(f"glyphs replaced: {glyph_count}")
+    print(f"alternate glyphs added: {alt_glyph_count}")
 
     font_name = "DergeVariant"
     family_name = "DergeVariant-Regular"
     set_font_metadata(font, font_name, family_name)
 
-    # calt feature definition
-    feature_file_content = original_feature_file_content + "\nfeature calt {\n"
+    feature_file_content = "feature calt {\n"
     for glyph_name, glyphs in alternate_glyphs.items():
-        for i, glyph in enumerate(glyphs[1:], start=1):
-            alternate_glyph_name = f"{glyph_name}.alt{i}"
-
-            for j in range(i):
-                if j > 0:
-                    rule = "    sub " + glyph_name + "'" + " ".join([glyph_name]*j) + " by " + alternate_glyph_name + ";\n"
-                else:
-                    rule = f"    sub {glyph_name}' by {alternate_glyph_name};\n"
-            feature_file_content += rule
+       for i, glyph in enumerate(glyphs[1:], start=1):
+        alternate_glyph_name = f"{glyph_name}.calt{i}"
+        
+        for j in range(i):
+            if j > 0:
+                rule = "    sub " + glyph_name + "'" + " ".join([glyph_name]*j) + " by " + alternate_glyph_name + ";\n"
+            else:
+                rule = f"    sub {glyph_name}' by {alternate_glyph_name};\n"
+        feature_file_content += rule
     feature_file_content += "} calt;"
+
+
 
     with open("features.fea", "w") as f:
         f.write(feature_file_content)
@@ -225,8 +220,6 @@ def main():
     addOpenTypeFeatures(font, "features.fea")
 
     font.save(new_font_path)
-
-    print(f"Number of glyphs replaced: {glyph_count}")
 
 
 if __name__ == "__main__":
