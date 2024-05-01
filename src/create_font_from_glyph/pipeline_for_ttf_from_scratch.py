@@ -86,7 +86,7 @@ class SVGPen(BasePen):
         return min(x_coords), min(y_coords), max(x_coords), max(y_coords)
 
 
-def parse_svg_to_glyph(svg_file_path, desired_headline):
+def parse_svg_to_glyph(svg_file_path):
     filename = os.path.splitext(os.path.basename(svg_file_path))[0]
     codepoints = extract_codepoints(filename)
     glyph_name = generate_glyph_name(codepoints)
@@ -114,6 +114,7 @@ def parse_svg_to_glyph(svg_file_path, desired_headline):
             max_x = max(max_x, bbox[2])
             max_y = max(max_y, bbox[3])
 
+    desired_headline = - 2000
     vertical_translation = desired_headline - max_y
 
     for element in root.iter('{http://www.w3.org/2000/svg}path'):
@@ -136,83 +137,107 @@ def parse_svg_to_glyph(svg_file_path, desired_headline):
 
     glyph = ttPen.glyph()
 
-    # print(f"File Name: {filename}")
-    # print(f"Glyph Name: {glyph_name}")
-    # print(f"Unicodes: {codepoints}")
+    print(f"File Name: {filename}")
+    print(f"Glyph Name: {glyph_name}")
+    print(f"Unicodes: {codepoints}")
 
     return glyph, glyph_name, codepoints
 
 
+from fontTools.ttLib import TTFont, newTable
+from fontTools.ttLib.tables._g_l_y_f import Glyph
 
-def create_font_from_glyphs(glyph_data, output_path):
+from fontTools.ttLib.tables._c_m_a_p import cmap_format_4
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+def create_font(glyphs_data, new_font_path):
+    # Initialize a new font object
     font = TTFont()
 
-    # Initialize necessary tables
+    # Create necessary tables
+    font['cmap'] = newTable('cmap')
     font['head'] = newTable('head')
-    font['head'].unitsPerEm = 1000
-
     font['hhea'] = newTable('hhea')
-    font['hhea'].ascent = 900
-    font['hhea'].descent = -100
-
     font['maxp'] = newTable('maxp')
-    font['maxp'].numGlyphs = len(glyph_data) + 1  
-
-    # Prepare the glyf 
-    font['glyf'] = newTable('glyf')
-
-    # Add glyphs to the glyf table
-    for glyph, glyph_name, _ in glyph_data:
-        font['glyf'][glyph_name] = glyph
-
-    # Initialize cmap table
-    cmap = newTable('cmap')
-    cmap.tableVersion = 0
-    cmap.tables = []
-    subtable = CmapSubtable.newSubtable(4)
-    subtable.platformID = 3
-    subtable.platEncID = 1
-    subtable.language = 0
-    subtable.cmap = {unicode: glyph_name for _, glyph_name, unicodes in glyph_data for unicode in unicodes}
-    cmap.tables.append(subtable)
-    font['cmap'] = cmap
-
-    # Name table
-    font_name = "Example Font"
-    name = newTable('name')
-    name.names = []  
-    nameRecord = NameRecord()
-    nameRecord.nameID = 1
-    nameRecord.platformID = 3
-    nameRecord.platEncID = 1
-    nameRecord.langID = 0x409
-    nameRecord.string = font_name.encode('utf-16-be')
-    name.names.append(nameRecord)
-    font['name'] = name
-
-    # Post table
+    font['name'] = newTable('name')
+    font['OS/2'] = newTable('OS/2')
     font['post'] = newTable('post')
-    font['post'].italicAngle = 0
-    font['post'].underlinePosition = -100
-    font['post'].underlineThickness = 50
-    font['post'].isFixedPitch = 0
+    font['glyf'] = newTable('glyf')
+    font['loca'] = newTable('loca')
+    font['hmtx'] = newTable('hmtx')
+
+    # Initialize 'glyf' table
+    font['glyf'].glyphs = {}
+    font['glyf'].glyphOrder = []
+    font['hmtx'].metrics = {}
+
+    pen = TTGlyphPen(font.getGlyphSet())
+
+    for glyph_data, codepoints, glyph_name in glyphs_data:
+    # Use the glyph data directly
+        glyph = glyph_data
+
+        # Add the glyph to the 'glyf' table
+        font['glyf'].glyphs[glyph_name] = glyph
+        font['glyf'].glyphOrder.append(glyph_name)
+
+        # Set the horizontal metrics for the glyph in the 'hmtx' table
+        font['hmtx'].metrics[glyph_name] = (500, 50)  # Properly set advance width and left side bearing
+
+    # Set up other necessary header values
+    font['head'].setBounds(font['glyf'].getBounds(font['glyf']))
+    font['hhea'].ascender = 800
+    font['hhea'].descender = -200
+    font['hhea'].numberOfHMetrics = len(font['glyf'].glyphs)
+
+    font['maxp'].numGlyphs = len(font['glyf'].glyphs)
+    
+    # cmap table setup
+    cmap_subtable = cmap_format_4(4)
+    cmap_subtable.platformID = 3
+    cmap_subtable.platEncID = 1
+    cmap_subtable.language = 0
+    cmap_subtable.cmap = {cp: font['glyf'].glyphOrder.index(glyph_name) for glyph_name, _, codepoints in glyphs_data for cp in codepoints}
+
+    font['cmap'].tables.append(cmap_subtable)
+    font['cmap'].tableVersion = 0
 
     # Save the font
-    font.save(output_path)
+    font.save(new_font_path)
+
 
 
 def main():
-    svg_dir_path = "../../data/derge_font/svg"
-    desired_headline = 2000 
-
-    glyph_data = []
-    for filename in os.listdir(svg_dir_path):
-        if filename.endswith('.svg'):
-            svg_file_path = os.path.join(svg_dir_path, filename)
-            glyph, glyph_name, codepoints = parse_svg_to_glyph(svg_file_path, desired_headline)
-            glyph_data.append((glyph, glyph_name, codepoints))
-
-    create_font_from_glyphs(glyph_data, "../../data/derge_font/ttf/derge.ttf")
+    directory = "../../data/derge_font/svg"  
+    new_font_path = "../../data/derge_font/ttf/derge.ttf"  
+    glyphs_data = []
+    for filename in os.listdir(directory):
+        if filename.endswith(".svg"):
+            svg_file = os.path.join(directory, filename)
+            glyph, codepoints, glyph_name = parse_svg_to_glyph(svg_file)
+            glyphs_data.append((glyph, codepoints, glyph_name))
+    
+    print(f"glyphs added: {len(glyphs_data)}")
+    create_font(glyphs_data, new_font_path)
 
 if __name__ == "__main__":
     main()
+
+
+def main():
+    directory = "../../data/derge_font/svg"  
+    new_font_path = "../../data/derge_font/ttf/derge.ttf"  
+    glyphs_data = []
+    for filename in os.listdir(directory):
+        if filename.endswith(".svg"):
+            svg_file = os.path.join(directory, filename)
+            glyph, codepoints, glyph_name = parse_svg_to_glyph(svg_file)
+            glyphs_data.append((glyph, codepoints, glyph_name))
+    
+    print(f"glyphs added: {len(glyphs_data)}")
+    create_font(glyphs_data, new_font_path)
+
+if __name__ == "__main__":
+    main()
+
+ 
