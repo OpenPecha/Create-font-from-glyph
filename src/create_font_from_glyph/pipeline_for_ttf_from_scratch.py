@@ -1,15 +1,16 @@
+from fontTools.ttLib.tables import _g_l_y_f
 from fontTools.ttLib.tables._g_l_y_f import Glyph as TTGlyph
 from fontTools.pens.basePen import BasePen
 from xml.etree import ElementTree as ET
 from svg.path import parse_path
 import os
-from fontTools.pens.basePen import BasePen
-from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.feaLib.builder import addOpenTypeFeatures
-from fontTools.feaLib.builder import addOpenTypeFeaturesFromString
-from fontTools.ttLib import newTable
+from fontTools.ttLib.tables._n_a_m_e import NameRecord
+from fontTools.ttLib.tables._c_m_a_p import CmapSubtable
+from fontTools.ttLib import TTFont, newTable
+from fontTools.ttLib.tables._g_l_y_f import Glyph
 
 
 def extract_codepoints(filename):
@@ -85,7 +86,7 @@ class SVGPen(BasePen):
         return min(x_coords), min(y_coords), max(x_coords), max(y_coords)
 
 
-def parse_svg_to_glyph(svg_file_path, desired_headline):
+def parse_svg_to_glyph(svg_file_path):
     filename = os.path.splitext(os.path.basename(svg_file_path))[0]
     codepoints = extract_codepoints(filename)
     glyph_name = generate_glyph_name(codepoints)
@@ -113,6 +114,7 @@ def parse_svg_to_glyph(svg_file_path, desired_headline):
             max_x = max(max_x, bbox[2])
             max_y = max(max_y, bbox[3])
 
+    desired_headline = - 2000
     vertical_translation = desired_headline - max_y
 
     for element in root.iter('{http://www.w3.org/2000/svg}path'):
@@ -139,95 +141,103 @@ def parse_svg_to_glyph(svg_file_path, desired_headline):
     print(f"Glyph Name: {glyph_name}")
     print(f"Unicodes: {codepoints}")
 
-    return glyph, glyph_name
+    return glyph, glyph_name, codepoints
 
 
-def set_font_metadata(font, font_name, family_name):
-    name_table = font['name']
-    for name_record in name_table.names:
-        if name_record.nameID == 1:
-            name_record.string = family_name.encode('utf-16-be')
-        elif name_record.nameID == 4:
-            name_record.string = font_name.encode('utf-16-be')
+from fontTools.ttLib import TTFont, newTable
+from fontTools.ttLib.tables._g_l_y_f import Glyph
+
+from fontTools.ttLib.tables._c_m_a_p import cmap_format_4
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+
+def create_font(glyphs_data, new_font_path):
+    # Initialize a new font object
+    font = TTFont()
+
+    # Create necessary tables
+    font['cmap'] = newTable('cmap')
+    font['head'] = newTable('head')
+    font['hhea'] = newTable('hhea')
+    font['maxp'] = newTable('maxp')
+    font['name'] = newTable('name')
+    font['OS/2'] = newTable('OS/2')
+    font['post'] = newTable('post')
+    font['glyf'] = newTable('glyf')
+    font['loca'] = newTable('loca')
+    font['hmtx'] = newTable('hmtx')
+
+    # Initialize 'glyf' table
+    font['glyf'].glyphs = {}
+    font['glyf'].glyphOrder = []
+    font['hmtx'].metrics = {}
+
+    pen = TTGlyphPen(font.getGlyphSet())
+
+    for glyph_data, codepoints, glyph_name in glyphs_data:
+    # Use the glyph data directly
+        glyph = glyph_data
+
+        # Add the glyph to the 'glyf' table
+        font['glyf'].glyphs[glyph_name] = glyph
+        font['glyf'].glyphOrder.append(glyph_name)
+
+        # Set the horizontal metrics for the glyph in the 'hmtx' table
+        font['hmtx'].metrics[glyph_name] = (500, 50)  # Properly set advance width and left side bearing
+
+    # Set up other necessary header values
+    font['head'].setBounds(font['glyf'].getBounds(font['glyf']))
+    font['hhea'].ascender = 800
+    font['hhea'].descender = -200
+    font['hhea'].numberOfHMetrics = len(font['glyf'].glyphs)
+
+    font['maxp'].numGlyphs = len(font['glyf'].glyphs)
+    
+    # cmap table setup
+    cmap_subtable = cmap_format_4(4)
+    cmap_subtable.platformID = 3
+    cmap_subtable.platEncID = 1
+    cmap_subtable.language = 0
+    cmap_subtable.cmap = {cp: font['glyf'].glyphOrder.index(glyph_name) for glyph_name, _, codepoints in glyphs_data for cp in codepoints}
+
+    font['cmap'].tables.append(cmap_subtable)
+    font['cmap'].tableVersion = 0
+
+    # Save the font
+    font.save(new_font_path)
 
 
 
 def main():
-    svg_dir_path = '../../data/derge_font/Derge_test_ten_glyphs/svg'
-    base_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
-    new_font_path = '../../data/derge_font/Derge_test_ten_glyphs/ttf/DergeVariant.ttf'
-    font = TTFont(base_font_path)
-
-# writing the calt feature rule to simulate randomness is overriding the already present rule in the existing font for ligature substitution
-# this line of code will decomplies the feature into sting and append the new rules to the string
-# this approach is not working properly, need another approach
-
-    if "GSUB" in font:
-        gsub = font["GSUB"].table
-        gsub.decompile()
-        original_feature_file_content = gsub.toXML()
-    else:
-        original_feature_file_content = ""
-
-    glyph_count = 0
-    alternate_glyphs = {}
-
-    for filename in os.listdir(svg_dir_path):
-        if filename.endswith('.svg'):
-            svg_file_path = os.path.join(svg_dir_path, filename)
-            desired_headline = -2000
-            glyph, glyph_name = parse_svg_to_glyph(svg_file_path, desired_headline)
-
-            if glyph_name in font['glyf']:
-                if glyph_name not in alternate_glyphs:
-                    alternate_glyphs[glyph_name] = []
-                alternate_glyphs[glyph_name].append(glyph)
-            elif glyph_name not in font['glyf']:
-                print(f"skipping glyph {glyph_name}")
-                continue
-
-    for glyph_name, glyphs in alternate_glyphs.items():
-        font['glyf'][glyph_name] = glyphs[0]
-        original_advance_width, original_lsb = font['hmtx'][glyph_name]
-        new_advance_width = max(0, int(original_advance_width))
-        font['hmtx'][glyph_name] = (new_advance_width, original_lsb)
-        glyph_count += 1
-        for i, glyph in enumerate(glyphs[1:], start=1):
-            alternate_glyph_name = f"{glyph_name}.alt{i}"
-            font['glyf'][alternate_glyph_name] = glyph
-            original_advance_width, original_lsb = font['hmtx'][glyph_name]
-            new_advance_width = max(0, int(original_advance_width))
-            font['hmtx'][alternate_glyph_name] = (new_advance_width, original_lsb)
-
-            glyph_count += 1
-
-    font_name = "DergeVariant"
-    family_name = "DergeVariant-Regular"
-    set_font_metadata(font, font_name, family_name)
-
-    # calt feature definition
-    feature_file_content = original_feature_file_content + "\nfeature calt {\n"
-    for glyph_name, glyphs in alternate_glyphs.items():
-        for i, glyph in enumerate(glyphs[1:], start=1):
-            alternate_glyph_name = f"{glyph_name}.alt{i}"
-
-            for j in range(i):
-                if j > 0:
-                    rule = "    sub " + glyph_name + "'" + " ".join([glyph_name]*j) + " by " + alternate_glyph_name + ";\n"
-                else:
-                    rule = f"    sub {glyph_name}' by {alternate_glyph_name};\n"
-            feature_file_content += rule
-    feature_file_content += "} calt;"
-
-    with open("features.fea", "w") as f:
-        f.write(feature_file_content)
-
-    addOpenTypeFeatures(font, "features.fea")
-
-    font.save(new_font_path)
-
-    print(f"Number of glyphs replaced: {glyph_count}")
-
+    directory = "../../data/derge_font/svg"  
+    new_font_path = "../../data/derge_font/ttf/derge.ttf"  
+    glyphs_data = []
+    for filename in os.listdir(directory):
+        if filename.endswith(".svg"):
+            svg_file = os.path.join(directory, filename)
+            glyph, codepoints, glyph_name = parse_svg_to_glyph(svg_file)
+            glyphs_data.append((glyph, codepoints, glyph_name))
+    
+    print(f"glyphs added: {len(glyphs_data)}")
+    create_font(glyphs_data, new_font_path)
 
 if __name__ == "__main__":
     main()
+
+
+def main():
+    directory = "../../data/derge_font/svg"  
+    new_font_path = "../../data/derge_font/ttf/derge.ttf"  
+    glyphs_data = []
+    for filename in os.listdir(directory):
+        if filename.endswith(".svg"):
+            svg_file = os.path.join(directory, filename)
+            glyph, codepoints, glyph_name = parse_svg_to_glyph(svg_file)
+            glyphs_data.append((glyph, codepoints, glyph_name))
+    
+    print(f"glyphs added: {len(glyphs_data)}")
+    create_font(glyphs_data, new_font_path)
+
+if __name__ == "__main__":
+    main()
+
+ 
