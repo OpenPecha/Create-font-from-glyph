@@ -1,7 +1,7 @@
 import os
 import re
 
-def convert_pixel_to_glyph_unit(pixels, units_per_em=11, point_size=12, ppi=140):
+def convert_pixel_to_glyph_unit(pixels, units_per_em=100, point_size=12, ppi=100):
     """Converts pixels to glyph units and rounds the result to the nearest integer."""
     return round(pixels * (units_per_em / (point_size) * (ppi / 72)))
 
