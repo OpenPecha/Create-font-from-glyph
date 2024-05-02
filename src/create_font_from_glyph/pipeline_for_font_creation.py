@@ -139,13 +139,18 @@ def parse_svg_to_glyph(svg_file_path):
 
     return glyph, codepoints, glyph_name
 
-
 def add_glyphs_to_font(font_path, glyphs_data, new_font_path):
     font = TTFont(font_path)
     
     for table_name in ['cmap', 'head', 'hhea', 'maxp', 'post', 'OS/2', 'name', 'glyf', 'hmtx']:
         if table_name not in font:
             font[table_name] = newTable(table_name)
+    
+    font['name'].setName('DergeVariantBlank', 4, 3, 1, 0x409)  
+    font['name'].setName('1.0', 5, 3, 1, 0x409) 
+    font['name'].setName('DergeVariant', 1, 3, 1, 0x409)
+    font['name'].setName('MonlamAI', 9, 3, 1, 0x409)
+    font['name'].setName('MonlamAI', 0, 3, 1, 0x409) 
 
     font['cmap'].tableVersion = 0
     font['cmap'].tables = []
@@ -154,9 +159,17 @@ def add_glyphs_to_font(font_path, glyphs_data, new_font_path):
     cmap_subtable.platEncID = 1
     cmap_subtable.language = 0
     cmap_subtable.cmap = {}
-    all_glyph_units = create_font_units("../../data/derge_font/svg")
+    all_glyph_units = create_font_units("../../data/derge_font/Derge_test_ten_glyphs/svg")
 
+    glyph_count = {}
     for (glyph, codepoints, glyph_name), (glyph_width, lsb, rsb) in zip(glyphs_data, all_glyph_units):
+        original_glyph_name = glyph_name
+        if glyph_name not in glyph_count:
+            glyph_count[glyph_name] = 0
+        else:
+            glyph_count[glyph_name] += 1
+            glyph_name = f"{glyph_name}.calt{glyph_count[glyph_name]}"
+
         if 'glyf' in font:
             font['glyf'][glyph_name] = glyph
 
@@ -165,22 +178,24 @@ def add_glyphs_to_font(font_path, glyphs_data, new_font_path):
         if 'hmtx' in font:
             font['hmtx'][glyph_name] = (advance_width, lsb)
 
-        if len(glyph_name.split('0F')) <= 2:
+        if len(original_glyph_name.split('0F')) <= 2: 
             for cp in codepoints:
-                cmap_subtable.cmap[cp] = glyph_name  
+                cmap_subtable.cmap[cp] = original_glyph_name  
 
     font['cmap'].tables.append(cmap_subtable)
     font['cmap'].tables.sort(key=lambda x: (x.platformID, x.platEncID, x.language, x.format))
 
     font.save(new_font_path)
+    print(f"font saved at: {new_font_path}")
+
 
 
 
 
 def main():
-    directory = "../../data/derge_font/svg" 
+    directory = "../../data/derge_font/Derge_test_ten_glyphs/svg" 
     blank_font_path = "../../data/base_font/AdobeBlank.ttf"  
-    new_font_path = "../../data/derge_font/ttf/derge.ttf"  
+    new_font_path = "../../data/derge_font/Derge_test_ten_glyphs/ttf/DergeVariant.ttf"  
     glyphs_data = []
     for filename in os.listdir(directory):
         if filename.endswith(".svg"):
