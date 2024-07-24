@@ -4,7 +4,7 @@ import boto3
 
 MONLAM_AI_OCR_BUCKET = "monlam.ai.ocr"
 
-aws_credentials_file = os.path.join(os.getenv('USERPROFILE'), '.aws', 'credential', 'tenkal_accessKeys.csv')
+aws_credentials_file = os.path.join(os.getenv('HOME'), '.aws', 'credential', 'tenkal_accessKeys.csv')
 aws_access_key_id = None
 aws_secret_access_key = None
 

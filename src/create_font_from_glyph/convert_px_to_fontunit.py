@@ -34,4 +34,4 @@ def create_font_units(directory):
     return results
 
 
-results = create_font_units("../../data/derge_font/Derge_test_ten_glyphs/svg")
+results = create_font_units("../../data/font_data/derge_font/variant_glyphs/svg")

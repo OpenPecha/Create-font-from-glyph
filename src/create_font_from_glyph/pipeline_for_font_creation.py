@@ -280,9 +280,9 @@ def add_glyphs_to_font(font_path, glyphs_data, new_font_path, svg_directory):
     print(f"font saved at: {new_font_path}")
 
 def main():
-    svg_directory = "../../data/derge_font/Derge_test_ten_glyphs/svg" 
+    svg_directory = "../../data/font_data/derge_font/variant_glyphs/svg" 
     blank_font_path = "../../data/base_font/AdobeBlank.ttf"  
-    new_font_path = "../../data/derge_font/Derge_test_ten_glyphs/ttf/DergeVariant1.0.ttf"  
+    new_font_path = "../../data/font_data/derge_font/variant_glyphs/ttf/derge_complete.ttf"  
     glyphs_data = []
     for filename in os.listdir(svg_directory):
         if filename.endswith(".svg"):

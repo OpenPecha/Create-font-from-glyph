@@ -15,10 +15,11 @@ bucket_name = MONLAM_AI_OCR_BUCKET
 
 logging.basicConfig(filename='skipped_glyph.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
 
-downloaded_images_dir = "../../data/pecing_font/Pecing_test_10_glyphs/downloaded_images"
-cleaned_images_dir = "../../data/pecing_font/Pecing_test_10_glyphs/cleaned_images"
-svg_dir = "../../data/pecing_font/Pecing_test_10_glyphs/svg"
-jsonl_dir = "../../data/pecing_annotations/all_pecing_batches"
+downloaded_images_dir = "../../data/font_data/derge_font/variant_glyphs/downloaded_images"
+cleaned_images_dir = "../../data/font_data/derge_font/variant_glyphs/cleaned_images"
+svg_dir = "../../data/font_data/derge_font/variant_glyphs/svg"
+jsonl_dir = "../../data/annotation_data/derge_annotations/derge_opf_reviewed"
+
 
 def download_image(image_url):
     image_parts = (image_url.split("?")[0]).split("/")
@@ -140,41 +141,53 @@ def png_to_svg(cleaned_image_path, svg_output_path):
 def main():
     jsonl_paths = list(Path(jsonl_dir).iterdir())
     processed_ids = {}
+    unique_base_ids = set() 
+
     for jsonl_path in jsonl_paths:
         try:
             with jsonlines.open(jsonl_path) as reader:
                 for line in reader:
-                    if line["answer"] == "accept":
-                        try:
-                            image_id = line["id"].split("_")[0]
-                            if image_id in processed_ids:
-                                if processed_ids[image_id] >= 10:
-                                    logging.info(f"Skipping duplicate ID: {image_id}")
-                                    continue
-                                else:
-                                    processed_ids[image_id] += 1
-                            else:
-                                processed_ids[image_id] = 1
-                            image_span = line["spans"]
-                            png_image_path = download_image(line["image"])
+                    image_id = line["id"]
+                    if '_' in image_id:
+                        base_id = image_id.split('_')[0]
+                        if base_id in unique_base_ids:
+                            logging.info(f"Skipping duplicate base ID: {base_id}")
+                            continue
+                        else:
+                            unique_base_ids.add(base_id)
+                    else:
+                        base_id = image_id
+                    
+                    if base_id in processed_ids:
+                        if processed_ids[base_id] >= 10:
+                            logging.info(f"Skipping duplicate ID: {base_id}")
+                            continue
+                        else:
+                            processed_ids[base_id] += 1
+                    else:
+                        processed_ids[base_id] = 1
 
-                            cleaned_image_path = png_process(
-                                png_image_path, image_span, cleaned_images_dir)
+                    try:
+                        image_span = line["spans"]
+                        png_image_path = download_image(line["image"])
 
-                            if cleaned_image_path is None:
-                                logging.info(f"Skipping {png_image_path}")
-                                continue
-                            filename = os.path.basename(cleaned_image_path)
-                            svg_output_path = Path(f"{svg_dir}/{Path(filename).stem}.svg")
-                            png_to_svg(cleaned_image_path, svg_output_path)
+                        cleaned_image_path = png_process(
+                            png_image_path, image_span, cleaned_images_dir)
 
-                        except Exception as e:
-                            logging.error(f"Error processing image {line['image']}: {e}")
-                            traceback.print_exc()
+                        if cleaned_image_path is None:
+                            logging.info(f"Skipping {png_image_path}")
+                            continue
+
+                        filename = os.path.basename(cleaned_image_path)
+                        svg_output_path = Path(f"{svg_dir}/{Path(filename).stem}.svg")
+                        png_to_svg(cleaned_image_path, svg_output_path)
+
+                    except Exception as e:
+                        logging.error(f"Error processing image {line['image']}: {e}")
+                        traceback.print_exc()
         except Exception as e:
             logging.error(f"Error processing {jsonl_path}: {e}")
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     main()
-
