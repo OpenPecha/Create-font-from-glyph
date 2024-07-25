@@ -9,6 +9,7 @@ import logging
 import traceback
 import re
 import subprocess
+import csv
 
 s3 = monlam_ai_ocr_s3_client
 bucket_name = MONLAM_AI_OCR_BUCKET
@@ -19,7 +20,7 @@ downloaded_images_dir = "../../data/font_data/derge_font/variant_glyphs/download
 cleaned_images_dir = "../../data/font_data/derge_font/variant_glyphs/cleaned_images"
 svg_dir = "../../data/font_data/derge_font/variant_glyphs/svg"
 jsonl_dir = "../../data/annotation_data/derge_annotations/derge_opf_reviewed"
-
+csv_output_path = "../../data/font_data/derge_font/variant_glyphs/mapping_csv/char_mapping.csv"
 
 def download_image(image_url):
     image_parts = (image_url.split("?")[0]).split("/")
@@ -39,7 +40,6 @@ def download_image(image_url):
         print(f"Error while downloading {image_name}: {e}")
     return os.path.join(downloaded_images_dir, f"{image_name_tibetan_only}{file_extension}")
 
-# Define output image path
 def get_image_output_path(cleaned_image, image_name, output_path, headlines):
     headline_starts = headlines["headline_starts"]
     headline_ends = headlines["headline_ends"]
@@ -47,13 +47,16 @@ def get_image_output_path(cleaned_image, image_name, output_path, headlines):
 
     left_edge, right_edge = get_edges(cleaned_image)
     if left_edge is None:
-        return None
+        return None, None, None, None
 
-    new_image_name = f"{glyph_name}_{int(right_edge - left_edge)}_{int(headline_starts - left_edge)}_{int(right_edge - headline_ends)}.png"
+    width = int(right_edge - left_edge)
+    lsb = int(headline_starts - left_edge)
+    rsb = int(right_edge - headline_ends)
+
+    new_image_name = f"{glyph_name}_{width}_{lsb}_{rsb}.png"
     image_output_path = os.path.join(output_path, new_image_name)
-    return image_output_path
+    return image_output_path, width, lsb, rsb
 
-# Define edge calculation function
 def get_edges(cleaned_image):
     if cleaned_image.mode != '1':
         cleaned_image = cleaned_image.convert('1')
@@ -67,7 +70,6 @@ def get_edges(cleaned_image):
     right_edge = np.max(black_pixels[1]) + 1
     return left_edge, right_edge
 
-# Define headlines calculation function
 def get_headlines(baselines_coord):
     min_x = min(coord[0] for coord in baselines_coord)
     max_x = max(coord[0] for coord in baselines_coord)
@@ -77,7 +79,6 @@ def get_headlines(baselines_coord):
     }
     return headlines
 
-# Define PNG processing function
 def png_process(png_image_path, span, cleaned_image_path):
     baselines_coord = None
     polygon_points = None
@@ -87,7 +88,7 @@ def png_process(png_image_path, span, cleaned_image_path):
         if info["label"] == "Glyph":
             polygon_points = [(x, y) for x, y in info["points"]]
     if baselines_coord is None or polygon_points is None:
-        return None
+        return None, None, None, None
 
     image = Image.open(png_image_path)
     mask = Image.new("L", image.size, 0)
@@ -97,7 +98,7 @@ def png_process(png_image_path, span, cleaned_image_path):
     cleaned_image.paste(image, mask=mask)
 
     headlines = get_headlines(baselines_coord)
-    cleaned_image_path = get_image_output_path(
+    cleaned_image_path, width, lsb, rsb = get_image_output_path(
         cleaned_image, os.path.basename(png_image_path), cleaned_image_path, headlines)
 
     if cleaned_image_path is not None:
@@ -111,18 +112,16 @@ def png_process(png_image_path, span, cleaned_image_path):
                 newData.append(item)
         cleaned_image.putdata(newData)
         cleaned_image.save(cleaned_image_path)
-        return cleaned_image_path
+        return cleaned_image_path, width, lsb, rsb
     else:
-        return None
+        return None, None, None, None
 
-# Define bounding box calculation function
 def find_glyph_bbox(image):
     gray_image = image.convert('L')
     binary_image = gray_image.point(lambda p: p < 128 and 255)
     bbox = binary_image.getbbox()
     return bbox
 
-# Define PNG to SVG conversion function
 def png_to_svg(cleaned_image_path, svg_output_path):
     image = Image.open(cleaned_image_path).convert('1')
     pbm_path = "temp.pbm"
@@ -138,55 +137,77 @@ def png_to_svg(cleaned_image_path, svg_output_path):
         os.remove(svg_output_path)
     os.rename(temp_svg_output_path, svg_output_path)
 
+def process_jsonl_file(jsonl_path, writer, processed_ids, unique_base_ids):
+    try:
+        with jsonlines.open(jsonl_path) as reader:
+            for line in reader:
+                image_id = line["id"]
+                if '_' in image_id:
+                    base_id = image_id.split('_')[0]
+                    if base_id in unique_base_ids:
+                        logging.info(f"Skipping duplicate base ID: {base_id}")
+                        continue
+                    else:
+                        unique_base_ids.add(base_id)
+                else:
+                    base_id = image_id
+                
+                if base_id in processed_ids:
+                    if processed_ids[base_id] >= 10:
+                        logging.info(f"Skipping duplicate ID: {base_id}")
+                        continue
+                    else:
+                        processed_ids[base_id] += 1
+                else:
+                    processed_ids[base_id] = 1
+
+                try:
+                    image_span = line["spans"]
+                    png_image_path = download_image(line["image"])
+
+                    cleaned_image_path, width, lsb, rsb = png_process(
+                        png_image_path, image_span, cleaned_images_dir)
+
+                    if cleaned_image_path is None:
+                        logging.info(f"Skipping {png_image_path}")
+                        continue
+
+                    filename = os.path.basename(cleaned_image_path)
+                    svg_output_path = Path(f"{svg_dir}/{Path(filename).stem}.svg")
+                    png_to_svg(cleaned_image_path, svg_output_path)
+
+                    rect_points = None
+                    for span in image_span:
+                        if span["label"] == "Base Line":
+                            rect_points = span["points"]
+                            break
+
+                    writer.writerow({
+                        'id': line['id'],
+                        'width': width,
+                        'lsb': lsb,
+                        'rsb': rsb,
+                        'rect_points': rect_points
+                    })
+
+                except Exception as e:
+                    logging.error(f"Error processing image {line['image']}: {e}")
+                    traceback.print_exc()
+    except Exception as e:
+        logging.error(f"Error processing {jsonl_path}: {e}")
+
 def main():
     jsonl_paths = list(Path(jsonl_dir).iterdir())
     processed_ids = {}
     unique_base_ids = set() 
 
-    for jsonl_path in jsonl_paths:
-        try:
-            with jsonlines.open(jsonl_path) as reader:
-                for line in reader:
-                    image_id = line["id"]
-                    if '_' in image_id:
-                        base_id = image_id.split('_')[0]
-                        if base_id in unique_base_ids:
-                            logging.info(f"Skipping duplicate base ID: {base_id}")
-                            continue
-                        else:
-                            unique_base_ids.add(base_id)
-                    else:
-                        base_id = image_id
-                    
-                    if base_id in processed_ids:
-                        if processed_ids[base_id] >= 10:
-                            logging.info(f"Skipping duplicate ID: {base_id}")
-                            continue
-                        else:
-                            processed_ids[base_id] += 1
-                    else:
-                        processed_ids[base_id] = 1
+    with open(csv_output_path, mode='w', newline='') as csv_file:
+        fieldnames = ['id', 'width', 'lsb', 'rsb', 'rect_points']
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
 
-                    try:
-                        image_span = line["spans"]
-                        png_image_path = download_image(line["image"])
-
-                        cleaned_image_path = png_process(
-                            png_image_path, image_span, cleaned_images_dir)
-
-                        if cleaned_image_path is None:
-                            logging.info(f"Skipping {png_image_path}")
-                            continue
-
-                        filename = os.path.basename(cleaned_image_path)
-                        svg_output_path = Path(f"{svg_dir}/{Path(filename).stem}.svg")
-                        png_to_svg(cleaned_image_path, svg_output_path)
-
-                    except Exception as e:
-                        logging.error(f"Error processing image {line['image']}: {e}")
-                        traceback.print_exc()
-        except Exception as e:
-            logging.error(f"Error processing {jsonl_path}: {e}")
+        for jsonl_path in jsonl_paths:
+            process_jsonl_file(jsonl_path, writer, processed_ids, unique_base_ids)
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
