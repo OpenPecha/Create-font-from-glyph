@@ -3,7 +3,6 @@ from fontTools.pens.basePen import BasePen
 from xml.etree import ElementTree as ET
 from svg.path import parse_path
 import os
-from fontTools.pens.basePen import BasePen
 from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.transformPen import TransformPen
@@ -110,7 +109,6 @@ def parse_svg_to_glyph(svg_file_path, desired_headline):
             max_x = max(max_x, bbox[2])
             max_y = max(max_y, bbox[3])
 
-   
     vertical_translation = desired_headline - max_y
 
     for element in root.iter('{http://www.w3.org/2000/svg}path'):
@@ -148,17 +146,18 @@ def set_font_metadata(font, font_name, family_name):
         elif name_record.nameID == 4:
             name_record.string = font_name.encode('utf-16-be')
 
+
 def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
     glyph_count = 0
     bearing_reduction_amount = 190
-    
+
     for filename in os.listdir(svg_dir_path):
         if filename.endswith('.svg'):
             svg_file_path = os.path.join(svg_dir_path, filename)
 
             codepoints = extract_codepoints(os.path.splitext(filename)[0])
             glyph_name = generate_glyph_name(codepoints)
-            
+
             if glyph_name in reduction_excluded_glyphs:
                 desired_headline = -1700
                 apply_reduction = False
@@ -172,18 +171,22 @@ def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
                 font['glyf'][glyph_name] = glyph
                 original_advance_width, original_lsb = font['hmtx'][glyph_name]
 
-                if apply_reduction:
+                if apply_reduction and glyph_name != 'uni0F7C':
                     new_lsb = max(0, original_lsb - bearing_reduction_amount)
                     new_advance_width = max(0, int(original_advance_width) - bearing_reduction_amount)
                 else:
                     new_lsb = original_lsb
                     new_advance_width = original_advance_width
 
+                if glyph_name == 'uni0F7C':
+                    new_lsb = original_lsb  # Example value for moving left
+
                 font['hmtx'][glyph_name] = (new_advance_width, new_lsb)
 
                 glyph_count += 1
 
     return glyph_count
+
 
 def main():
     svg_dir_path = '../../data/font_data/derge_font/variant_glyphs/svg'
@@ -192,7 +195,7 @@ def main():
     font = TTFont(old_font_path)
 
     reduction_excluded_glyphs = {'uni0F72', 'uni0F7C', 'uni0F7A'}
-    
+
     glyph_count = process_glyphs(svg_dir_path, font, reduction_excluded_glyphs)
 
     font_name = "DergeComplete"
@@ -202,6 +205,7 @@ def main():
     font.save(new_font_path)
 
     print(f"Number of glyphs replaced: {glyph_count}")
+
 
 if __name__ == "__main__":
     main()
