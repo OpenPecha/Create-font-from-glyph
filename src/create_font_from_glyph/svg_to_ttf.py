@@ -7,7 +7,6 @@ from fontTools.pens.basePen import BasePen
 from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.transformPen import TransformPen
-# from calculate_svg_headline import calculate_headline
 
 
 def extract_codepoints(filename):
@@ -149,6 +148,42 @@ def set_font_metadata(font, font_name, family_name):
         elif name_record.nameID == 4:
             name_record.string = font_name.encode('utf-16-be')
 
+def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
+    glyph_count = 0
+    bearing_reduction_amount = 200
+    
+    for filename in os.listdir(svg_dir_path):
+        if filename.endswith('.svg'):
+            svg_file_path = os.path.join(svg_dir_path, filename)
+
+            codepoints = extract_codepoints(os.path.splitext(filename)[0])
+            glyph_name = generate_glyph_name(codepoints)
+            
+            if glyph_name in reduction_excluded_glyphs:
+                desired_headline = -1700
+                apply_reduction = False
+            else:
+                desired_headline = -2000
+                apply_reduction = True
+
+            glyph, glyph_name = parse_svg_to_glyph(svg_file_path, desired_headline)
+
+            if glyph_name in font['glyf']:
+                font['glyf'][glyph_name] = glyph
+                original_advance_width, original_lsb = font['hmtx'][glyph_name]
+
+                if apply_reduction:
+                    new_lsb = max(0, original_lsb - bearing_reduction_amount)
+                    new_advance_width = max(0, int(original_advance_width) - bearing_reduction_amount)
+                else:
+                    new_lsb = original_lsb
+                    new_advance_width = original_advance_width
+
+                font['hmtx'][glyph_name] = (new_advance_width, new_lsb)
+
+                glyph_count += 1
+
+    return glyph_count
 
 def main():
     svg_dir_path = '../../data/font_data/derge_font/variant_glyphs/svg'
@@ -156,20 +191,9 @@ def main():
     new_font_path = '../../data/font_data/derge_font/variant_glyphs/ttf/DergeComplete.ttf'
     font = TTFont(old_font_path)
 
-    glyph_count = 0
-    for filename in os.listdir(svg_dir_path):
-        if filename.endswith('.svg'):
-            svg_file_path = os.path.join(svg_dir_path, filename)
-            desired_headline = -2000
-            glyph, glyph_name = parse_svg_to_glyph(svg_file_path, desired_headline)
-
-            if glyph_name in font['glyf']:
-                font['glyf'][glyph_name] = glyph
-                original_advance_width, original_lsb = font['hmtx'][glyph_name]
-                new_advance_width = max(0, int(original_advance_width))
-                font['hmtx'][glyph_name] = (new_advance_width, original_lsb)
-
-                glyph_count += 1
+    reduction_excluded_glyphs = {'uni0F72', 'uni0F7C', 'uni0F7A'}
+    
+    glyph_count = process_glyphs(svg_dir_path, font, reduction_excluded_glyphs)
 
     font_name = "DergeComplete"
     family_name = "Derge-Regular"
@@ -178,7 +202,6 @@ def main():
     font.save(new_font_path)
 
     print(f"Number of glyphs replaced: {glyph_count}")
-
 
 if __name__ == "__main__":
     main()
