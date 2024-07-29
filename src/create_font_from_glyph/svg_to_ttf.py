@@ -150,7 +150,7 @@ def set_font_metadata(font, font_name, family_name):
 
 def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
     glyph_count = 0
-    bearing_reduction_amount = 200
+    bearing_reduction_amount = 190
     
     for filename in os.listdir(svg_dir_path):
         if filename.endswith('.svg'):
