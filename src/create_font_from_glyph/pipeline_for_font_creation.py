@@ -1,17 +1,15 @@
-from fontTools.ttLib.tables._g_l_y_f import Glyph as TTGlyph
-from fontTools.pens.basePen import BasePen
+from fontTools.ttLib import TTFont, newTable
+from fontTools.ttLib.tables.otTables import Lookup, Ligature, LigatureSubst, LigatureSet, Coverage
+from fontTools.ttLib.tables import otTables
+from fontTools.ttLib.tables._c_m_a_p import cmap_format_4
 from xml.etree import ElementTree as ET
 from svg.path import parse_path
 import os
-from fontTools.ttLib import TTFont
+from fontTools.ttLib.tables._g_l_y_f import Glyph as TTGlyph
+from fontTools.pens.basePen import BasePen
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.transformPen import TransformPen
-from fontTools.ttLib import TTFont, newTable
-from fontTools.ttLib.tables._c_m_a_p import cmap_format_4
 from convert_px_to_fontunit import create_font_units
-from fontTools.ttLib.tables.otTables import Lookup, Ligature, LigatureSubst
-from fontTools.ttLib.tables import otTables
-
 
 def extract_codepoints(filename):
     tibetan_char = filename.split('_')[0]
@@ -66,7 +64,7 @@ class SVGPen(BasePen):
             elif segment.__class__.__name__ == 'Move':
                 self._moveTo((segment.end.real, segment.end.imag))
         if self.path and self.path[-1][0] != 'closePath':
-            self.closePath()    
+            self.closePath()
 
     def get_bbox(self):
         if not self.path:
@@ -82,7 +80,6 @@ class SVGPen(BasePen):
                     x_coords.append(point[0])
                     y_coords.append(point[1])
         return min(x_coords), min(y_coords), max(x_coords), max(y_coords)
-
 
 def parse_svg_to_glyph(svg_file_path):
     filename = os.path.splitext(os.path.basename(svg_file_path))[0]
@@ -137,19 +134,18 @@ def parse_svg_to_glyph(svg_file_path):
 
     return glyph, codepoints, glyph_name
 
-
 def add_glyphs_to_font(font_path, glyphs_data, new_font_path, svg_directory):
     font = TTFont(font_path)
-    
+
     for table_name in ['cmap', 'head', 'hhea', 'maxp', 'post', 'OS/2', 'name', 'glyf', 'hmtx']:
         if table_name not in font:
             font[table_name] = newTable(table_name)
 
-    font['name'].setName('DergeVariant1.0', 4, 3, 1, 0x409)  
-    font['name'].setName('1.0', 5, 3, 1, 0x409) 
+    font['name'].setName('DergeVariant1.0', 4, 3, 1, 0x409)
+    font['name'].setName('1.0', 5, 3, 1, 0x409)
     font['name'].setName('DergeVariant1.0', 1, 3, 1, 0x409)
     font['name'].setName('MonlamAI', 9, 3, 1, 0x409)
-    font['name'].setName('MonlamAI', 0, 3, 1, 0x409) 
+    font['name'].setName('MonlamAI', 0, 3, 1, 0x409)
 
     font['cmap'].tableVersion = 0
     font['cmap'].tables = []
@@ -178,29 +174,109 @@ def add_glyphs_to_font(font_path, glyphs_data, new_font_path, svg_directory):
         if 'hmtx' in font:
             font['hmtx'][glyph_name] = (advance_width, lsb)
 
-        if len(original_glyph_name.split('0F')) <= 2: 
+        if len(original_glyph_name.split('0F')) <= 2:
             for cp in codepoints:
                 cmap_subtable.cmap[cp] = original_glyph_name
 
     font['cmap'].tables.append(cmap_subtable)
     font['cmap'].tables.sort(key=lambda x: (x.platformID, x.platEncID, x.language, x.format))
-    
+
     font.save(new_font_path)
     print(f"font saved at: {new_font_path}")
 
+def add_ligature_substitution(font, ligatures):
+    if 'GSUB' not in font:
+        font['GSUB'] = newTable('GSUB')
+        font['GSUB'].table = otTables.GSUB()
+        font['GSUB'].table.Version = 1.0
+        font['GSUB'].table.ScriptList = otTables.ScriptList()
+        font['GSUB'].table.ScriptList.ScriptRecord = []
+        font['GSUB'].table.FeatureList = otTables.FeatureList()
+        font['GSUB'].table.FeatureList.FeatureRecord = []
+        font['GSUB'].table.LookupList = otTables.LookupList()
+        font['GSUB'].table.LookupList.Lookup = []
+
+    lookup = Lookup()
+    lookup.LookupType = 4
+    lookup.LookupFlag = 0
+    lookup.SubTable = []
+
+    ligature_subst = LigatureSubst()
+    ligature_subst.Format = 1
+    ligature_subst.LigatureSet = []
+
+    coverage_dict = {}
+
+    for ligature_glyph, component_glyphs in ligatures:
+        print(f"Adding ligature substitution: {ligature_glyph} -> {component_glyphs}")
+        first_glyph = component_glyphs[0]
+
+        if first_glyph not in coverage_dict:
+            ligature_set = LigatureSet()
+            ligature_set.Ligature = []
+            ligature_subst.LigatureSet.append(ligature_set)
+            coverage_dict[first_glyph] = ligature_set
+
+        ligature = Ligature()
+        ligature.Component = component_glyphs[1:]
+        ligature.LigGlyph = ligature_glyph
+        coverage_dict[first_glyph].Ligature.append(ligature)
+
+    ligature_subst.Coverage = Coverage()
+    ligature_subst.Coverage.glyphs = list(coverage_dict.keys())
+    lookup.SubTable.append(ligature_subst)
+    font['GSUB'].table.LookupList.Lookup.append(lookup)
+
+    feature_record = otTables.FeatureRecord()
+    feature_record.FeatureTag = 'liga'
+    feature_record.Feature = otTables.Feature()
+    feature_record.Feature.FeatureParams = None
+    feature_record.Feature.LookupListIndex = [len(font['GSUB'].table.LookupList.Lookup) - 1]
+    font['GSUB'].table.FeatureList.FeatureRecord.append(feature_record)
+
+    script_record = otTables.ScriptRecord()
+    script_record.ScriptTag = 'DFLT'
+    script_record.Script = otTables.Script()
+    script_record.Script.DefaultLangSys = otTables.DefaultLangSys()
+    script_record.Script.DefaultLangSys.FeatureIndex = [len(font['GSUB'].table.FeatureList.FeatureRecord) - 1]
+    script_record.Script.DefaultLangSys.ReqFeatureIndex = 0xFFFF
+    script_record.Script.DefaultLangSys.LookupOrder = None
+    script_record.Script.DefaultLangSys.LookupIndex = []
+    font['GSUB'].table.ScriptList.ScriptRecord.append(script_record)
+
+    font['GSUB'].compile(font)
+    print("Ligature substitution added successfully")
+
+
+
 def main():
-    svg_directory = "../../data/font_data/derge_font/variant_glyphs/svg" 
-    blank_font_path = "../../data/base_font/AdobeBlank.ttf"  
-    new_font_path = "../../data/font_data/derge_font/variant_glyphs/ttf/derge_complete.ttf"  
+    svg_directory = "../../data/font_data/derge_font/variant_glyphs/svg"
+    blank_font_path = "../../data/base_font/AdobeBlank.ttf"
+    new_font_path = "../../data/font_data/derge_font/variant_glyphs/ttf/derge_complete.ttf"
     glyphs_data = []
     for filename in os.listdir(svg_directory):
         if filename.endswith(".svg"):
             svg_file = os.path.join(svg_directory, filename)
             glyph, codepoints, glyph_name = parse_svg_to_glyph(svg_file)
             glyphs_data.append((glyph, codepoints, glyph_name))
-    
+
     print(f"glyphs added: {len(glyphs_data)}")
     add_glyphs_to_font(blank_font_path, glyphs_data, new_font_path, svg_directory)
 
+    font = TTFont(new_font_path)
+
+    ligatures = []
+    for glyph, codepoints, glyph_name in glyphs_data:
+        if len(codepoints) > 1:
+            ligatures.append((glyph_name, [f"uni{codepoint:04X}" for codepoint in codepoints]))
+
+    add_ligature_substitution(font, ligatures)
+
+    font.save(new_font_path)
+    print(f"Ligature substitutions added and font saved at: {new_font_path}")
+
 if __name__ == "__main__":
     main()
+
+
+

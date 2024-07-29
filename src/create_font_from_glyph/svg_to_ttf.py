@@ -160,7 +160,6 @@ def main():
     for filename in os.listdir(svg_dir_path):
         if filename.endswith('.svg'):
             svg_file_path = os.path.join(svg_dir_path, filename)
-            # headline_svg = calculate_headline(svg_file_path)
             desired_headline = -2000
             glyph, glyph_name = parse_svg_to_glyph(svg_file_path, desired_headline)
 

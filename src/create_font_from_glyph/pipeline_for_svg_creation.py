@@ -19,7 +19,7 @@ logging.basicConfig(filename='skipped_glyph.log', filemode='w', format='%(name)s
 downloaded_images_dir = "../../data/font_data/derge_font/variant_glyphs/downloaded_images"
 cleaned_images_dir = "../../data/font_data/derge_font/variant_glyphs/cleaned_images"
 svg_dir = "../../data/font_data/derge_font/variant_glyphs/svg"
-jsonl_dir = "../../data/annotation_data/derge_annotations/derge_opf_reviewed"
+jsonl_dir = "../../data/annotation_data/derge_annotations/all_derge_batches"
 csv_output_path = "../../data/font_data/derge_font/variant_glyphs/mapping_csv/char_mapping.csv"
 
 def download_image(image_url):
@@ -160,6 +160,8 @@ def process_jsonl_file(jsonl_path, writer, processed_ids, unique_base_ids):
                         processed_ids[base_id] += 1
                 else:
                     processed_ids[base_id] = 1
+
+                logging.info(f"Processing image ID: {image_id} (base ID: {base_id})")
 
                 try:
                     image_span = line["spans"]
