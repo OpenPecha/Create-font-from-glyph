@@ -147,10 +147,11 @@ def set_font_metadata(font, font_name, family_name):
             name_record.string = family_name.encode('utf-16-be')
         elif name_record.nameID == 4:
             name_record.string = font_name.encode('utf-16-be')
-
+            
 def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
     glyph_count = 0
-    bearing_reduction_amount = 190
+    bearing_reduction_amount = 210
+    glyph_shift_right_amount = 210  
     
     for filename in os.listdir(svg_dir_path):
         if filename.endswith('.svg'):
@@ -160,7 +161,10 @@ def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
             glyph_name = generate_glyph_name(codepoints)
             
             if glyph_name in reduction_excluded_glyphs:
-                desired_headline = -1700
+                desired_headline = -1790
+                apply_reduction = False
+            elif glyph_name == 'uni0F72':
+                desired_headline = -1750
                 apply_reduction = False
             else:
                 desired_headline = -2000
@@ -179,6 +183,9 @@ def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
                     new_lsb = original_lsb
                     new_advance_width = original_advance_width
 
+                if glyph_name == 'uni0F7C':
+                    new_lsb += glyph_shift_right_amount
+
                 font['hmtx'][glyph_name] = (new_advance_width, new_lsb)
 
                 glyph_count += 1
@@ -186,17 +193,17 @@ def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
     return glyph_count
 
 def main():
-    svg_dir_path = '../../data/font_data/derge_font/variant_glyphs/svg'
+    svg_dir_path = '../../data/font_data/derge_font/complete_glyphs/svg'
     old_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
-    new_font_path = '../../data/font_data/derge_font/variant_glyphs/ttf/DergeComplete.ttf'
+    new_font_path = '../../fonts/derge_font/DergeComplete.2.0.ttf'
     font = TTFont(old_font_path)
 
-    reduction_excluded_glyphs = {'uni0F72', 'uni0F7C', 'uni0F7A'}
+    reduction_excluded_glyphs = {'uni0F7C', 'uni0F7A'}
     
     glyph_count = process_glyphs(svg_dir_path, font, reduction_excluded_glyphs)
 
     font_name = "DergeComplete"
-    family_name = "Derge-Regular"
+    family_name = "Derge-Regular.2.0"
     set_font_metadata(font, font_name, family_name)
 
     font.save(new_font_path)
