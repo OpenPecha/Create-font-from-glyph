@@ -8,17 +8,14 @@ from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.transformPen import TransformPen
 
-
 def extract_codepoints(filename):
     tibetan_char = filename.split('_')[0]
     codepoints = [ord(char) for char in tibetan_char]
     return codepoints
 
-
 def generate_glyph_name(codepoints):
     glyph_name = 'uni' + ''.join(f"{codepoint:04X}" for codepoint in codepoints)
     return glyph_name
-
 
 class SVGPen(BasePen):
     def __init__(self, glyphSet=None):
@@ -81,7 +78,6 @@ class SVGPen(BasePen):
                     y_coords.append(point[1])
         return min(x_coords), min(y_coords), max(x_coords), max(y_coords)
 
-
 def parse_svg_to_glyph(svg_file_path, desired_headline):
     filename = os.path.splitext(os.path.basename(svg_file_path))[0]
     codepoints = extract_codepoints(filename)
@@ -110,7 +106,6 @@ def parse_svg_to_glyph(svg_file_path, desired_headline):
             max_x = max(max_x, bbox[2])
             max_y = max(max_y, bbox[3])
 
-   
     vertical_translation = desired_headline - max_y
 
     for element in root.iter('{http://www.w3.org/2000/svg}path'):
@@ -139,7 +134,6 @@ def parse_svg_to_glyph(svg_file_path, desired_headline):
 
     return glyph, glyph_name
 
-
 def set_font_metadata(font, font_name, family_name):
     name_table = font['name']
     for name_record in name_table.names:
@@ -147,7 +141,11 @@ def set_font_metadata(font, font_name, family_name):
             name_record.string = family_name.encode('utf-16-be')
         elif name_record.nameID == 4:
             name_record.string = font_name.encode('utf-16-be')
-            
+
+def set_line_spacing(font, line_spacing):
+    os2_table = font['OS/2']
+    os2_table.sTypoLineGap = int(line_spacing * 1000)  # line_spacing in font units (1000 units per em)
+
 def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
     glyph_count = 0
     bearing_reduction_amount = 210
@@ -157,7 +155,6 @@ def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
     for filename in os.listdir(svg_dir_path):
         if filename.endswith('.svg'):
             svg_file_path = os.path.join(svg_dir_path, filename)
-
 
             codepoints = extract_codepoints(os.path.splitext(filename)[0])
             glyph_name = generate_glyph_name(codepoints)
@@ -190,6 +187,9 @@ def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
 
                 if glyph_name == 'uni0F72':
                     new_lsb += glyph_shift_right_amount_0F72 
+                    
+                if glyph_name == 'uni0F7A':
+                    new_lsb += glyph_shift_right_amount_0F72
 
                 font['hmtx'][glyph_name] = (new_advance_width, new_lsb)
 
@@ -197,6 +197,12 @@ def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
 
     return glyph_count
 
+def adjust_line_spacing(font, new_line_gap):
+    # Get the 'hhea' table
+    hhea_table = font['hhea']
+    
+    # Update the lineGap value
+    hhea_table.lineGap = new_line_gap
 
 def main():
     svg_dir_path = '../../data/font_data/derge_font/complete_glyphs/svg'
@@ -211,6 +217,9 @@ def main():
     font_name = "DergeComplete"
     family_name = "Derge-Regular.2.0"
     set_font_metadata(font, font_name, family_name)
+
+    # Adjust line spacing (e.g., reduce the lineGap to 0)
+    adjust_line_spacing(font, new_line_gap=0)  # Set to desired value
 
     font.save(new_font_path)
 
