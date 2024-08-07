@@ -152,10 +152,12 @@ def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
     glyph_count = 0
     bearing_reduction_amount = 210
     glyph_shift_right_amount = 210  
-    
+    glyph_shift_right_amount_0F72 = 150  # shift amount for uni0F72
+
     for filename in os.listdir(svg_dir_path):
         if filename.endswith('.svg'):
             svg_file_path = os.path.join(svg_dir_path, filename)
+
 
             codepoints = extract_codepoints(os.path.splitext(filename)[0])
             glyph_name = generate_glyph_name(codepoints)
@@ -186,11 +188,15 @@ def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
                 if glyph_name == 'uni0F7C':
                     new_lsb += glyph_shift_right_amount
 
+                if glyph_name == 'uni0F72':
+                    new_lsb += glyph_shift_right_amount_0F72 
+
                 font['hmtx'][glyph_name] = (new_advance_width, new_lsb)
 
                 glyph_count += 1
 
     return glyph_count
+
 
 def main():
     svg_dir_path = '../../data/font_data/derge_font/complete_glyphs/svg'
