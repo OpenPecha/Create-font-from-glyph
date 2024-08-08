@@ -169,13 +169,42 @@ def set_font_metadata(font, font_name, family_name):
 #     print(f"Adjusted usWinDescent: {os2_table.usWinDescent}")
 
 
+def add_space_glyph(font, glyph_name='uni0020', width=5000):
+
+    if glyph_name not in font['hmtx'].metrics:
+        font['glyf'][glyph_name] = TTGlyph()
+        
+        font['hmtx'][glyph_name] = (width, 0)
+        if 'name' in font:
+            name_table = font['name']
+            existing_names = {record.nameID: record for record in name_table.names}
+            
+            if 1 not in existing_names:
+                name_table.setName(glyph_name, 1, 3, 1, 'en')
+        
+        print(f"space glyph '{glyph_name}' with width {width}.")
+
+
+        
+#for tsa, tsha, dza      
+def adjust_baseline_for_glyph(glyph_name, baseline):
+    special_baseline_glyphs = {'uni0F59', 'uni0F5A', 'uni0F5B'}
+    if any(glyph in glyph_name for glyph in special_baseline_glyphs):
+        return -1900
+    return baseline
+
 def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
     glyph_count = 0
     bearing_reduction_amount = 210
 
+    # for fixing vowels placement
     glyph_shift_right_amount_0F7C = 210
     glyph_shift_right_amount_0F72 = 150 
     glyph_shift_right_amount_0F7A = 150  
+
+    # for fixing tsek placement
+    tsek_lsb_reduction = 50
+
 
     for filename in os.listdir(svg_dir_path):
         if filename.endswith('.svg'):
@@ -184,6 +213,7 @@ def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
             codepoints = extract_codepoints(os.path.splitext(filename)[0])
             glyph_name = generate_glyph_name(codepoints)
 
+            # Set desired headline for specific glyphs
             if glyph_name in reduction_excluded_glyphs:
                 desired_headline = -1790
                 apply_reduction = False
@@ -194,15 +224,15 @@ def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
                 desired_headline = -2000
                 apply_reduction = True
 
+            # Adjust baseline for special glyphs
+            desired_headline = adjust_baseline_for_glyph(glyph_name, desired_headline)
+
             glyph, glyph_name = parse_svg_to_glyph(svg_file_path, desired_headline)
 
             if glyph_name in font['glyf']:
                 font['glyf'][glyph_name] = glyph
-                original_advance_width, original_lsb = font['hmtx'][glyph_name]
-
-                # Initialize new RSB with a default value if it's not present
+                original_advance_width, original_lsb = font['hmtx'].metrics.get(glyph_name, (0, 0))
                 new_lsb = original_lsb
-                new_rsb = 0
                 new_advance_width = original_advance_width
 
                 if apply_reduction:
@@ -212,7 +242,7 @@ def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
                     new_lsb = original_lsb
                     new_advance_width = original_advance_width
 
-                # Adjust LSB and RSB for specific glyphs
+                # Adjust placement for vowels
                 if glyph_name == 'uni0F7C':
                     new_lsb += glyph_shift_right_amount_0F7C
 
@@ -222,20 +252,15 @@ def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
                 if glyph_name == 'uni0F7A':
                     new_lsb += glyph_shift_right_amount_0F7A
 
-                # if glyph_name == 'uni0F0D':
-                #     new_lsb -= glyph_shift_left_amount_0F0D  # Decrease LSB
-                #     new_rsb += glyph_shift_right_amount_0F0D  # Increase RSB
-
-                # if glyph_name == 'uni0F0B':
-                #     new_lsb -= glyph_shift_left_amount_0F0B  # Decrease LSB
-                #     new_rsb += glyph_shift_right_amount_0F0B  # Increase RSB
+                # Reduce LSB for the tsek mark
+                if glyph_name == 'uni0F0B':
+                    new_lsb = max(0, new_lsb - tsek_lsb_reduction)
 
                 font['hmtx'][glyph_name] = (new_advance_width, new_lsb)
 
                 glyph_count += 1
 
     return glyph_count
-
 
 def main():
     svg_dir_path = '../../data/font_data/derge_font/complete_glyphs/svg'
@@ -250,13 +275,12 @@ def main():
     font_name = "DergeComplete"
     family_name = "Derge-Regular.2.0"
     set_font_metadata(font, font_name, family_name)
-
-    # adjust_metrics(font, new_line_gap=0, desired_line_height=1000)
-
+    
+    add_space_glyph(font, 'uni0020', 500)
+    
     font.save(new_font_path)
 
     print(f"Number of glyphs replaced: {glyph_count}")
-
 
 if __name__ == "__main__":
     main()
