@@ -16,11 +16,11 @@ bucket_name = MONLAM_AI_OCR_BUCKET
 
 logging.basicConfig(filename='skipped_glyph.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
 
-downloaded_images_dir = "../../data/font_data/derge_font/v2_complete_glyphs/downloaded_images"
-cleaned_images_dir = "../../data/font_data/derge_font/v2_complete_glyphs/cleaned_images"
-svg_dir = "../../data/font_data/derge_font/v2_complete_glyphs/svg"
+downloaded_images_dir = "../../data/font_data/derge_font/v4_complete_glyphs/downloaded_images"
+cleaned_images_dir = "../../data/font_data/derge_font/v4_complete_glyphs/cleaned_images"
+svg_dir = "../../data/font_data/derge_font/v4_complete_glyphs/svg"
 jsonl_dir = "../../data/annotation_data/derge_annotations/all_derge_batches"
-csv_output_path = "../../data/font_data/derge_font/v2_complete_glyphs/mapping_csv/char_mapping.csv"
+csv_output_path = "../../data/font_data/derge_font/v4_complete_glyphs/mapping_csv/char_mapping.csv"
 
 
 def download_image(image_url):
@@ -128,39 +128,44 @@ def find_glyph_bbox(image):
     bbox = binary_image.getbbox()
     return bbox
 
+
 def adjust_contrast(image_path, output_path, contrast_factor=2.0):
     image = Image.open(image_path)
     enhancer = ImageEnhance.Contrast(image)
     image = enhancer.enhance(contrast_factor)
     image.save(output_path)
-    
+
+
 def png_to_svg(cleaned_image_path, svg_output_path, svg_dir="svg_output"):
     os.makedirs(svg_dir, exist_ok=True)
-    # Save the initial contrast-adjusted image as PBM
-    contrast_image_path = "temp_contrast.pbm"
-    adjust_contrast(cleaned_image_path, contrast_image_path)
 
-    # Convert PBM to SVG with refined potrace parameters
+    resized_image_path = "temp_resized.png"
+    with Image.open(cleaned_image_path) as img:
+        new_size = (int(img.width * 10), int(img.height * 10))
+        resized_img = img.resize(new_size, Image.Resampling.NEAREST)
+        resized_img.save(resized_image_path)
+
+    contrast_image_path = "temp_contrast.pbm"
+    adjust_contrast(resized_image_path, contrast_image_path)
+
     sanitized_filename = re.sub('[^A-Za-z0-9_.]+', '', Path(cleaned_image_path).stem)
     temp_svg_output_path = Path(f"{svg_dir}/{sanitized_filename}.svg")
 
     subprocess.run([
         "potrace", contrast_image_path,
         "-s",  # Output as SVG
-        "--turdsize", "0.05",  # Lower turdsize for finer details
-        "--opttolerance", "0.005",  # Minimal optimization for more detail
-        "--blacklevel", "0.001",  # Lower black level to reduce stroke thickness
+        "--turdsize", "0.1",  # Adjusted turdsize to retain more detail
+        "--opttolerance", "0.01",  # Minimal optimization for detail preservation
+        "--blacklevel", "0.5",  # Adjusted black level to better capture pixelation
         "--scale", "5.5",  # Adjust scale if necessary
         "-o", temp_svg_output_path
     ])
-
-    # Clean up temporary files
+    os.remove(resized_image_path)
     os.remove(contrast_image_path)
-
-    # Replace existing SVG file if necessary
     if os.path.exists(svg_output_path):
         os.remove(svg_output_path)
     os.rename(temp_svg_output_path, svg_output_path)
+
 
 def process_jsonl_file(jsonl_path, writer, processed_ids, unique_base_ids):
     try:
@@ -205,7 +210,7 @@ def process_jsonl_file(jsonl_path, writer, processed_ids, unique_base_ids):
 
                     rect_points = None
                     for span in image_span:
-                        if span["label"] == "Base Line":
+                        if span["label"] == "Base L ine":
                             rect_points = span["points"]
                             break
 
