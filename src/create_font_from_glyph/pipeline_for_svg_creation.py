@@ -16,11 +16,11 @@ bucket_name = MONLAM_AI_OCR_BUCKET
 
 logging.basicConfig(filename='skipped_glyph.log', filemode='w', format='%(name)s - %(levelname)s - %(message)s')
 
-downloaded_images_dir = "../../data/font_data/derge_font/v4_complete_glyphs/downloaded_images"
-cleaned_images_dir = "../../data/font_data/derge_font/v4_complete_glyphs/cleaned_images"
-svg_dir = "../../data/font_data/derge_font/v4_complete_glyphs/svg"
-jsonl_dir = "../../data/annotation_data/derge_annotations/all_derge_batches"
-csv_output_path = "../../data/font_data/derge_font/v4_complete_glyphs/mapping_csv/char_mapping.csv"
+downloaded_images_dir = "data/font_data/derge_font/v4_complete_glyphs/downloaded_images"
+cleaned_images_dir = "data/font_data/derge_font/v4_complete_glyphs/cleaned_images"
+svg_dir = "data/font_data/derge_font/v4_complete_glyphs/svg"
+jsonl_dir = "data/annotation_data/derge_annotations/all_derge_batches"
+csv_output_path = "data/font_data/derge_font/v4_complete_glyphs/mapping_csv/char_mapping.csv"
 
 
 def download_image(image_url):

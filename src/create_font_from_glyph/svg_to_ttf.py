@@ -263,9 +263,9 @@ def process_glyphs(svg_dir_path, font, reduction_excluded_glyphs):
     return glyph_count
 
 def main():
-    svg_dir_path = '../../data/font_data/derge_font/v4_complete_glyphs/reduced_svg'
-    old_font_path = '../../data/base_font/sambhotaUnicodeBaseShip.ttf'
-    new_font_path = '../../fonts/derge_font/DergeComplete.3.0.ttf'
+    svg_dir_path = 'data/font_data/derge_font/v5_complete_glyphs/reduced_de_noise_svg'
+    old_font_path = 'data/base_font/sambhotaUnicodeBaseShip.ttf'
+    new_font_path = 'fonts/derge_font/DergeComplete.3.0.ttf'
     font = TTFont(old_font_path)
 
     reduction_excluded_glyphs = {'uni0F7C', 'uni0F7A'}
