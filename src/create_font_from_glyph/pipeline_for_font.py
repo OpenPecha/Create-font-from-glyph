@@ -131,10 +131,6 @@ def parse_svg_to_glyph(svg_file_path, desired_headline):
 
     glyph = ttPen.glyph()
 
-    # print(f"File Name: {filename}")
-    # print(f"Glyph Name: {glyph_name}")
-    # print(f"Unicodes: {codepoints}")
-
     return glyph, glyph_name
 
 
@@ -146,46 +142,9 @@ def set_font_metadata(font, font_name, family_name):
         elif name_record.nameID == 4:
             name_record.string = font_name.encode('utf-16-be')
 
-# def adjust_metrics(font, new_line_gap, desired_line_height):
-#     # Adjust hhea table
-#     hhea_table = font['hhea']
-#     hhea_table.lineGap = new_line_gap
-
-#     # Adjust OS/2 table
-#     os2_table = font['OS/2']
-#     os2_table.sTypoLineGap = new_line_gap
-
-#     # Calculate ascent and descent
-#     ascent = int(desired_line_height * 0.6)
-#     descent = int(desired_line_height * 0.4)
-
-#     # Update metrics
-#     os2_table.usWinAscent = max(ascent, 0)
-#     os2_table.usWinDescent = max(descent, 0)
-
-#     print(f"Adjusted lineGap: {hhea_table.lineGap}")
-#     print(f"Adjusted sTypoLineGap: {os2_table.sTypoLineGap}")
-#     print(f"Adjusted usWinAscent: {os2_table.usWinAscent}")
-#     print(f"Adjusted usWinDescent: {os2_table.usWinDescent}")
-
-
-# def add_space_glyph(font, glyph_name='uni0020', width=5000):
-
-#     if glyph_name not in font['hmtx'].metrics:
-#         font['glyf'][glyph_name] = TTGlyph()
-
-#         font['hmtx'][glyph_name] = (width, 0)
-#         if 'name' in font:
-#             name_table = font['name']
-#             existing_names = {record.nameID: record for record in name_table.names}
-
-#             if 1 not in existing_names:
-#                 name_table.setName(glyph_name, 1, 3, 1, 'en')
-
-#         print(f"space glyph '{glyph_name}' with width {width}.")
-
-
 # for tsa, tsha, dza
+
+
 def adjust_baseline_for_glyph(glyph_name, baseline):
     special_baseline_glyphs = {'uni0F59', 'uni0F5A', 'uni0F5B'}
     if any(glyph in glyph_name for glyph in special_baseline_glyphs):
@@ -194,13 +153,6 @@ def adjust_baseline_for_glyph(glyph_name, baseline):
 
 
 def process_glyphs(svg_dir_path, font, vowel_glyphs):
-    glyph_count = 0
-
-    shift_amounts = {
-        'uni0F7C': -300,  # ོ
-        'uni0F7A': -330,  # ེ
-        'uni0F72': -350  # ི
-    }
 
     for filename in os.listdir(svg_dir_path):
         if filename.endswith('.svg'):
@@ -224,7 +176,6 @@ def process_glyphs(svg_dir_path, font, vowel_glyphs):
             if glyph_name in font['glyf']:
                 font['glyf'][glyph_name] = glyph
 
-            
                 try:
                     parts = filename.split('_')
                     width_pixel = int(parts[1])
@@ -240,6 +191,11 @@ def process_glyphs(svg_dir_path, font, vowel_glyphs):
                 rsb = int((rsb_pixel / 160) * 1000)
                 advance_width = width + lsb + rsb + 50
 
+                shift_amounts = {
+                    'uni0F7C': -300,  # ོ
+                    'uni0F7A': -330,  # ེ
+                    'uni0F72': -350  # ི
+                }
                 # for vowel glyphs
                 if glyph_name in shift_amounts:
                     lsb += shift_amounts[glyph_name]
@@ -256,10 +212,6 @@ def process_glyphs(svg_dir_path, font, vowel_glyphs):
                 font['hmtx'][glyph_name] = (advance_width, lsb)
                 font['glyf'][glyph_name].rsb = rsb
 
-                glyph_count += 1
-
-    return glyph_count
-
 
 def main():
     svg_dir_path = 'data/font_data/derge_font/v5_complete_glyphs/reduced_de_noise_svg'
@@ -269,17 +221,15 @@ def main():
 
     vowel_glyphs = {'uni0F7C', 'uni0F7A'}
 
-    glyph_count = process_glyphs(svg_dir_path, font, vowel_glyphs)
+    process_glyphs(svg_dir_path, font, vowel_glyphs)
 
     font_name = "DergeComplete"
     family_name = "Derge-Regular.4.0"
     set_font_metadata(font, font_name, family_name)
 
-    # add_space_glyph(font, 'uni0020', 500)
-
     font.save(new_font_path)
 
-    print(f"number of glyphs replaced: {glyph_count}")
+    print("font created successfully")
 
 
 if __name__ == "__main__":
